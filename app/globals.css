@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+/* Intelligo ID design tokens */
+@theme {
+  --color-navy: #023047;
+  --color-navy-700: #1f4e63;
+  --color-navy-600: #3c6c7f;
+  --color-navy-500: #5a8a9b;
+  --color-navy-400: #77a8b7;
+  --color-navy-300: #94c6d3;
+
+  --color-orange: #ff5400;
+  --color-orange-hover: #e84c00;
+  --color-orange-400: #ff803f;
+  --color-orange-100: #fff1e9;
+
+  --color-canvas: #f8fafb;
+  --color-pale: #eaf2f5;
+  --color-line: #dce5e9;
+  --color-muted: #5a6b73;
+  --color-danger: #b42318;
+  --color-danger-bg: #fef3f2;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --shadow-panel: 0 1px 2px rgb(2 48 71 / 0.04), 0 8px 24px -12px rgb(2 48 71 / 0.12);
+
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  --animate-breathe: breathe 2.4s ease-in-out infinite;
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(0.92);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-navy);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-orange-100);
+  color: var(--color-navy);
+}
+
+/* Consistent, visible keyboard focus */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* Reusable UI primitives (composable via @apply) */
+@utility label {
+  @apply mb-2 block text-xs font-semibold tracking-[0.08em] text-navy uppercase;
+}
+
+@utility field {
+  @apply w-full rounded-lg border border-line bg-white px-3.5 py-2.5 text-[15px] text-navy transition-colors placeholder:text-muted/80 hover:border-navy-400 focus:border-navy focus:ring-2 focus:ring-navy/15 focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-canvas;
+}
+
+@utility select {
+  @apply field cursor-pointer appearance-none pr-10;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%23023047' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 12px 8px;
+  background-position: right 14px center;
+  background-repeat: no-repeat;
+}
+
+@utility panel {
+  @apply rounded-2xl border border-line bg-white shadow-panel;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-secondary {
+  @apply btn border border-line bg-white text-navy hover:border-navy-400 hover:bg-canvas;
+}
+
+@utility btn-ghost {
+  @apply btn px-3 text-navy hover:bg-pale;
+}
+
+@utility eyebrow {
+  @apply text-xs font-semibold tracking-[0.14em] text-muted uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
