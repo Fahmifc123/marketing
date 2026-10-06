@@ -7,6 +7,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE, isSameOriginRequest, verifySessionToken } from "@/lib/auth";
+import { PlanValidationError, parseCarouselPlan } from "@/lib/carousel";
 import {
   DEFAULT_CUSTOM_RATIO,
   PROMPT_LIMITS,
@@ -16,6 +17,7 @@ import {
   isQualityId,
   isValidCustomRatio,
 } from "@/lib/image-settings";
+import type { CarouselPlan } from "@/types/carousel";
 import type { ApiErrorResponse, GenerationSettings } from "@/types/generation";
 import type { CustomRatio, FormatId } from "@/types/image";
 
@@ -139,4 +141,34 @@ export async function validateReferenceImage(value: FormDataEntryValue | null) {
     name: `${baseName}.${EXTENSIONS[type]}`,
     displayName: (value.name || "reference").slice(0, 120),
   };
+}
+
+/** Validates an approved carousel plan + slide number sent by the browser. */
+export function validateCarouselPlanInput(planInput: unknown, slideIndex?: unknown): { plan: CarouselPlan; slideIndex: number } {
+  let plan: CarouselPlan;
+  try {
+    plan = parseCarouselPlan(planInput);
+  } catch (err) {
+    throw new ValidationError("invalid_plan", err instanceof PlanValidationError ? err.message : "Rencana carousel tidak valid.");
+  }
+  const index = Number(slideIndex ?? 1);
+  if (!Number.isInteger(index) || index < 1 || index > plan.slides.length) {
+    throw new ValidationError("invalid_plan", "Nomor slide tidak valid.");
+  }
+  return { plan, slideIndex: index };
+}
+
+/** Parses the optional `carousel` form field: JSON `{ plan, slideIndex }`. */
+export function validateCarouselSlide(value: FormDataEntryValue | null) {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > 64_000) {
+    throw new ValidationError("invalid_plan", "Rencana carousel tidak valid.");
+  }
+  let data: { plan?: unknown; slideIndex?: unknown };
+  try {
+    data = JSON.parse(value);
+  } catch {
+    throw new ValidationError("invalid_plan", "Rencana carousel tidak valid.");
+  }
+  return validateCarouselPlanInput(data.plan, data.slideIndex);
 }

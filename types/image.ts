@@ -71,4 +71,11 @@ export interface HistoryItem {
   mimeType: string;
   image: Blob;
   thumbnail: string;
+  /** Present when the image is one slide of a multi-slide carousel. */
+  carousel?: {
+    groupId: string;
+    index: number;
+    total: number;
+    role: string;
+  };
 }

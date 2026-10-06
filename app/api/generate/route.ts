@@ -5,6 +5,7 @@ import {
   errorResponse,
   guardRequest,
   validateApiKey,
+  validateCarouselSlide,
   validatePrompt,
   validateReferenceImage,
   validateSettings,
@@ -12,7 +13,7 @@ import {
 import { isStoryPrompt } from "@/lib/content-detection";
 import { getModel, PROMPT_LIMITS, resolveFormat } from "@/lib/image-settings";
 import { generateImage, logSafeError, toUserFacingError } from "@/lib/openai";
-import { analyzeBrief, buildIntelligoPrompt } from "@/lib/prompt-builder";
+import { analyzeBrief, buildCarouselSlidePrompt, buildIntelligoPrompt } from "@/lib/prompt-builder";
 import type { GenerateSuccessResponse } from "@/types/generation";
 
 export const runtime = "nodejs";
@@ -22,6 +23,11 @@ export const maxDuration = 300;
 
 /**
  * Browser → /api/generate → Prompt Builder → OpenAI → browser.
+ *
+ * Single image: `prompt` is the marketer's brief.
+ * Carousel slide: `prompt` is the carousel brief and `carousel` holds the
+ * approved plan + slide number; `styleAnchor` is the approved cover.
+ *
  * The API key is used for this single request only. It is never stored or logged.
  */
 export async function POST(request: NextRequest) {
@@ -48,6 +54,8 @@ export async function POST(request: NextRequest) {
       formatExplicit: form.get("formatExplicit"),
     });
     const reference = await validateReferenceImage(form.get("referenceImage"));
+    const carousel = validateCarouselSlide(form.get("carousel"));
+    const styleAnchor = carousel ? await validateReferenceImage(form.get("styleAnchor")) : null;
     const developerMode = form.get("developerMode") === "true";
 
     let promptOverride: string | null = null;
@@ -58,29 +66,43 @@ export async function POST(request: NextRequest) {
       }
       promptOverride = override.trim();
     }
-    parsed = { apiKey, prompt, settings, reference, developerMode, promptOverride };
+    parsed = { apiKey, prompt, settings, reference, carousel, styleAnchor, developerMode, promptOverride };
   } catch (err) {
     if (err instanceof ValidationError) return errorResponse(400, err.code, err.message);
     return errorResponse(400, "invalid_request", "Request tidak valid. Coba lagi.");
   }
 
-  const { apiKey, prompt, settings, reference, developerMode, promptOverride } = parsed;
+  const { apiKey, prompt, settings, reference, carousel, styleAnchor, developerMode, promptOverride } = parsed;
   const model = getModel(settings.model)!;
   const format = resolveFormat({
     formatId: settings.formatId,
     customRatio: settings.customRatio,
-    autoStory: !settings.formatExplicit && isStoryPrompt(prompt),
+    autoStory: !carousel && !settings.formatExplicit && isStoryPrompt(prompt),
   });
 
   const internalPrompt =
     promptOverride ??
-    buildIntelligoPrompt({
-      userPrompt: prompt,
-      model: model.id,
-      quality: settings.quality,
-      aspectRatio: format,
-      referenceImage: reference ? { name: reference.displayName } : null,
-    });
+    (carousel
+      ? buildCarouselSlidePrompt({
+          brief: prompt,
+          plan: carousel.plan,
+          slideIndex: carousel.slideIndex,
+          quality: settings.quality,
+          aspectRatio: format,
+          hasStyleAnchor: Boolean(styleAnchor),
+          hasReference: Boolean(reference),
+        })
+      : buildIntelligoPrompt({
+          userPrompt: prompt,
+          model: model.id,
+          quality: settings.quality,
+          aspectRatio: format,
+          referenceImage: reference ? { name: reference.displayName } : null,
+        }));
+
+  // The style anchor goes first so the prompt can refer to "the first image".
+  const references = [styleAnchor, reference].filter((r) => r !== null);
+  const slide = carousel?.plan.slides.find((s) => s.index === carousel.slideIndex);
 
   const startedAt = Date.now();
   try {
@@ -90,7 +112,7 @@ export async function POST(request: NextRequest) {
       prompt: internalPrompt,
       quality: settings.quality,
       size: format.generationSize,
-      reference,
+      references,
       signal: request.signal,
     });
 
@@ -108,7 +130,7 @@ export async function POST(request: NextRequest) {
         hasReference: Boolean(reference),
         referenceName: reference?.displayName ?? null,
         promptOverride: Boolean(promptOverride),
-        contentTypes: analyzeBrief(prompt).contentTypes,
+        contentTypes: carousel ? ["carousel"] : analyzeBrief(prompt).contentTypes,
         durationMs: Date.now() - startedAt,
         createdAt: Date.now(),
         notices: [
@@ -116,6 +138,16 @@ export async function POST(request: NextRequest) {
           ...result.notices,
         ],
         usage: result.usage,
+        ...(carousel && slide
+          ? {
+              carouselSlide: {
+                index: slide.index,
+                total: carousel.plan.slides.length,
+                role: slide.role,
+                styleAnchor: Boolean(styleAnchor),
+              },
+            }
+          : {}),
       },
       ...(developerMode ? { internalPrompt } : {}),
     };

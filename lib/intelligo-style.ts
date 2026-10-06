@@ -9,6 +9,7 @@
  */
 import "server-only";
 
+import { SLIDE_ROLES, type SlideRole } from "@/types/carousel";
 import type { ContentType, FunnelStage } from "@/types/generation";
 
 export const INTELLIGO_BRAND_SYSTEM = {
@@ -159,16 +160,7 @@ export const INTELLIGO_MARKETING_RULES = {
     "Funnel stage not specified: for promotional posters treat the audience as warm; for educational or social content treat it as cold and lead with a relatable hook.",
 };
 
-export const CAROUSEL_FLOW = [
-  "HOOK",
-  "PROBLEM",
-  "INSIGHT",
-  "SOLUTION",
-  "PROGRAM",
-  "BENEFITS",
-  "OFFER / SCHEDULE",
-  "CTA",
-] as const;
+export const CAROUSEL_FLOW = SLIDE_ROLES;
 
 export const CONTENT_TYPE_DIRECTIONS: Record<ContentType, string[]> = {
   poster: [
@@ -207,7 +199,7 @@ export const CONTENT_TYPE_DIRECTIONS: Record<ContentType, string[]> = {
   ],
 };
 
-export const CAROUSEL_SLIDE_GUIDANCE: Record<string, string> = {
+export const CAROUSEL_SLIDE_GUIDANCE: Record<SlideRole, string> = {
   HOOK: "Slide role HOOK (cover): a bold, relatable headline area and an intriguing visual that makes people swipe. No product details yet.",
   PROBLEM: "Slide role PROBLEM: visualize the audience's real pain point in a believable, empathetic way.",
   INSIGHT: "Slide role INSIGHT: a clear 'aha' idea — simple diagram, contrast or reframing.",
@@ -236,4 +228,35 @@ export const REFERENCE_IMAGE_RULES = {
   product: "Represent the referenced product/object accurately (shape, proportions, details).",
   general:
     "Use the reference as visual direction for composition and subject while applying the Intelligo ID visual system. Do not copy third-party logos or text from it.",
+};
+
+/**
+ * Instructions for the carousel planner (the "main agent"). It drafts the
+ * story, copy and shared style guide; the verifier then checks every slide.
+ */
+export const INTELLIGO_CAROUSEL_PLANNER_RULES = {
+  role: "You are the lead creative strategist of the Intelligo ID marketing team. You plan cohesive, story-driven Instagram carousels that are later rendered slide by slide by an image model.",
+  story: [
+    "Plan exactly the requested number of slides, in the given role order. Each slide has one job; together they tell one story that makes people swipe.",
+    "HOOK must be relatable and scroll-stopping — for cold audiences never open with a generic program poster.",
+    "PROGRAM, BENEFITS and OFFER / SCHEDULE may only use details supplied in the brief. If details are missing, keep the copy general (e.g. what the learner will be able to do) and never fill gaps with invented facts.",
+    "CTA gives one clear, honest action. Do not invent links, handles or deadlines.",
+  ],
+  copy: [
+    "Write on-slide copy in the brief's language (default: Bahasa Indonesia).",
+    "headline: punchy, at most 8 words. supportingText: at most 16 words, or an empty string when the visual speaks for itself.",
+    "If the brief contains quoted text, use it verbatim on the most fitting slide.",
+    "Tone: professional, practical, credible, friendly, modern, career-oriented. No hype, fake urgency, clickbait, job guarantees or income claims.",
+  ],
+  facts:
+    "NEVER invent prices, dates, schedules, discounts, percentages, statistics, testimonials, mentor credentials, student counts, placement rates, partnerships, URLs, social handles or QR codes. Any number in the copy must appear in the brief.",
+  style: [
+    "Define ONE shared style guide that every slide will follow so the carousel feels like a single series: artDirection (pick one fitting Intelligo direction), background (palette usage per slide), typography (headline/supporting style), layoutGrid (margins, text zone, and a fixed empty corner reserved for the official logo — never draw a logo), recurringMotif (one subtle repeating element).",
+    "Keep it within the Intelligo palette: navy #023047 dominant, orange #FF5400 only as accent/CTA, white #FFFFFF, off-white #F8FAFB, pale blue #EAF2F5.",
+  ],
+  visuals: [
+    "visualConcept: 1–3 English sentences describing this slide's composition for the image model, consistent with the style guide.",
+    "subject: the main visual subject. Vary subjects across slides — do not use the same person on every slide; mix people, objects, diagrams and typography-led slides.",
+    "People, when used: realistic Indonesian / Southeast Asian students or professionals in authentic settings. No robots, holograms, neon, clutter or stock-photo poses.",
+  ],
 };

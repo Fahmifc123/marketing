@@ -1,3 +1,4 @@
+import type { SlideRole } from "./carousel";
 import type { CustomRatio, FormatId, QualityId, ResolvedFormat } from "./image";
 
 export type ContentType =
@@ -51,6 +52,12 @@ export interface GenerationMeta {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
+  };
+  carouselSlide?: {
+    index: number;
+    total: number;
+    role: SlideRole;
+    styleAnchor: boolean;
   };
 }
 

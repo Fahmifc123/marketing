@@ -54,20 +54,27 @@ export default function HistoryPanel({ items, available, activeId, busy, onOpen,
                   {item.prompt}
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted">
+                  {item.carousel && (
+                    <span className="mr-1 font-semibold text-navy">
+                      Slide {item.carousel.index}/{item.carousel.total} · {item.carousel.role} ·
+                    </span>
+                  )}
                   {formatTime(item.createdAt)} · {item.aspectRatio} · {item.quality}
                 </p>
                 <div className="mt-auto flex flex-wrap gap-x-3 pt-1 text-xs font-semibold">
                   <button type="button" onClick={() => onOpen(item)} className="text-navy-600 hover:text-navy">
                     Open
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onRegenerate(item)}
-                    disabled={busy}
-                    className="text-navy-600 hover:text-navy disabled:opacity-40"
-                  >
-                    Regenerate
-                  </button>
+                  {!item.carousel && (
+                    <button
+                      type="button"
+                      onClick={() => onRegenerate(item)}
+                      disabled={busy}
+                      className="text-navy-600 hover:text-navy disabled:opacity-40"
+                    >
+                      Regenerate
+                    </button>
+                  )}
                   <button type="button" onClick={() => onDownload(item)} className="text-navy-600 hover:text-navy">
                     Download
                   </button>

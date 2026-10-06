@@ -55,7 +55,8 @@ export interface ImageRequest {
   prompt: string;
   quality: QualityId;
   size: Dimensions;
-  reference?: ReferenceImageInput | null;
+  /** Reference images (e.g. style anchor + marketer's reference). Uses the edits endpoint when present. */
+  references?: ReferenceImageInput[];
   signal?: AbortSignal;
 }
 
@@ -79,9 +80,10 @@ async function callImagesApi(client: OpenAI, req: ImageRequest, quality: Quality
     output_format: OUTPUT_FORMAT,
   };
 
-  if (req.reference) {
-    const image = await toFile(req.reference.data, req.reference.name, { type: req.reference.type });
-    return client.images.edit({ ...common, image }, { signal: req.signal });
+  const references = req.references ?? [];
+  if (references.length > 0) {
+    const files = await Promise.all(references.map((r) => toFile(r.data, r.name, { type: r.type })));
+    return client.images.edit({ ...common, image: files.length === 1 ? files[0] : files }, { signal: req.signal });
   }
   return client.images.generate(common, { signal: req.signal });
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import CarouselGenerator from "@/components/CarouselGenerator";
 import DeveloperMode from "@/components/DeveloperMode";
 import GenerationSettings from "@/components/GenerationSettings";
 import HistoryPanel from "@/components/HistoryPanel";
@@ -66,6 +67,7 @@ export default function ImageGenerator() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyAvailable, setHistoryAvailable] = useState(true);
 
+  const [mode, setMode] = useState<"single" | "carousel">("single");
   const [devMode, setDevMode] = useState(false);
   const [override, setOverride] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<GenerationMeta | null>(null);
@@ -119,7 +121,7 @@ export default function ImageGenerator() {
 
   // Developer Mode: live preview of the internal prompt (built server-side).
   const hasReference = Boolean(reference);
-  const previewable = devMode && prompt.trim().length >= PROMPT_LIMITS.minLength;
+  const previewable = mode === "single" && devMode && prompt.trim().length >= PROMPT_LIMITS.minLength;
   useEffect(() => {
     if (!previewable) return;
     const controller = new AbortController();
@@ -283,6 +285,16 @@ export default function ImageGenerator() {
     }
   }
 
+  async function saveToHistory(item: HistoryItem) {
+    await addHistoryItem(item);
+    await refreshHistory();
+  }
+
+  function focusApiKeyError(message: string) {
+    setFieldErrors((f) => ({ ...f, apiKey: message }));
+    apiKeyRef.current?.focus();
+  }
+
   function generateFromForm() {
     void generate({ prompt, settings, reference, override });
   }
@@ -364,6 +376,41 @@ export default function ImageGenerator() {
     return copyText(devMode && result.internalPrompt ? result.internalPrompt : result.prompt);
   }
 
+  const sharedControls = (
+    <>
+      <GenerationSettings
+        ref={apiKeyRef}
+        apiKey={apiKey}
+        onApiKeyChange={(v) => {
+          setApiKey(v);
+          if (fieldErrors.apiKey) setFieldErrors((f) => ({ ...f, apiKey: undefined }));
+        }}
+        apiKeyError={fieldErrors.apiKey}
+        settings={settings}
+        onSettingsChange={setSettings}
+        autoStory={mode === "single" && autoStory}
+        disabled={loading}
+      />
+      <ReferenceUploader value={reference} onChange={setReference} disabled={loading} />
+    </>
+  );
+
+  const historyPanel = (
+    <HistoryPanel
+      items={history}
+      available={historyAvailable}
+      activeId={result?.id ?? null}
+      busy={loading}
+      onOpen={(item) => {
+        setMode("single");
+        openHistory(item);
+      }}
+      onRegenerate={regenerateHistory}
+      onDownload={(item) => downloadBlob(item.image)}
+      onDelete={removeHistory}
+    />
+  );
+
   return (
     <section aria-labelledby="generator-heading">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -393,51 +440,72 @@ export default function ImageGenerator() {
         </label>
       </div>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)]">
-        <div className="space-y-4">
-          <form
-            className="panel space-y-6 p-5 sm:p-6"
-            onSubmit={(e) => {
-              e.preventDefault();
-              generateFromForm();
-            }}
-            noValidate
+      <div role="tablist" aria-label="Creation mode" className="mb-5 inline-flex rounded-lg border border-line bg-white p-1">
+        {(
+          [
+            ["single", "Single Image"],
+            ["carousel", "Carousel (multi-slide)"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mode === id}
+            onClick={() => setMode(id)}
+            disabled={loading}
+            className={`rounded-md px-4 py-2 text-xs font-semibold tracking-[0.08em] uppercase transition-colors ${
+              mode === id ? "bg-navy text-white" : "text-muted hover:text-navy"
+            }`}
           >
-            <GenerationSettings
-              ref={apiKeyRef}
-              apiKey={apiKey}
-              onApiKeyChange={(v) => {
-                setApiKey(v);
-                if (fieldErrors.apiKey) setFieldErrors((f) => ({ ...f, apiKey: undefined }));
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === "carousel" ? (
+        <CarouselGenerator
+          apiKey={apiKey}
+          settings={settings}
+          reference={reference}
+          devMode={devMode}
+          controls={sharedControls}
+          onApiKeyError={focusApiKeyError}
+          onSaveToHistory={saveToHistory}
+          footer={historyPanel}
+        />
+      ) : (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,38fr)_minmax(0,62fr)]">
+          <div className="space-y-4">
+            <form
+              className="panel space-y-6 p-5 sm:p-6"
+              onSubmit={(e) => {
+                e.preventDefault();
+                generateFromForm();
               }}
-              apiKeyError={fieldErrors.apiKey}
-              settings={settings}
-              onSettingsChange={setSettings}
-              autoStory={autoStory}
-              disabled={loading}
-            />
+              noValidate
+            >
+              {sharedControls}
 
-            <ReferenceUploader value={reference} onChange={setReference} disabled={loading} />
+              <PromptInput
+                ref={promptRef}
+                value={prompt}
+                onChange={(v) => {
+                  setPrompt(v);
+                  if (fieldErrors.prompt) setFieldErrors((f) => ({ ...f, prompt: undefined }));
+                }}
+                onSubmit={generateFromForm}
+                error={fieldErrors.prompt}
+                disabled={loading}
+              />
 
-            <PromptInput
-              ref={promptRef}
-              value={prompt}
-              onChange={(v) => {
-                setPrompt(v);
-                if (fieldErrors.prompt) setFieldErrors((f) => ({ ...f, prompt: undefined }));
-              }}
-              onSubmit={generateFromForm}
-              error={fieldErrors.prompt}
-              disabled={loading}
-            />
-
-            <div>
-              {devMode && override !== null && (
-                <p className="mb-2 text-xs font-semibold text-navy">
-                  <span aria-hidden="true" className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-orange align-middle" />
-                  Manual prompt override active.
-                </p>
-              )}
+              <div>
+                {devMode && override !== null && (
+                  <p className="mb-2 text-xs font-semibold text-navy">
+                    <span aria-hidden="true" className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-orange align-middle" />
+                    Manual prompt override active.
+                  </p>
+      )}
               <button
                 type="submit"
                 disabled={loading}
@@ -482,18 +550,10 @@ export default function ImageGenerator() {
             onCopyPrompt={copyPrompt}
             onNewCreation={newCreation}
           />
-          <HistoryPanel
-            items={history}
-            available={historyAvailable}
-            activeId={result?.id ?? null}
-            busy={loading}
-            onOpen={openHistory}
-            onRegenerate={regenerateHistory}
-            onDownload={(item) => downloadBlob(item.image)}
-            onDelete={removeHistory}
-          />
+          {historyPanel}
         </div>
       </div>
+      )}
     </section>
   );
 }

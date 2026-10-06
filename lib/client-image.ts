@@ -68,22 +68,43 @@ export async function prepareReferenceImage(file: File): Promise<File> {
   throw new ReferenceImageError("Gambar referensi terlalu besar. Gunakan gambar yang lebih kecil.");
 }
 
+/** Downsizes an approved cover so it can travel as a small style reference with every slide request. */
+export async function prepareStyleAnchor(blob: Blob, maxEdge: number): Promise<File> {
+  const { canvas } = await drawScaled(blob, maxEdge);
+  for (const [type, quality, ext] of [
+    ["image/webp", 0.85, "webp"],
+    ["image/jpeg", 0.85, "jpg"],
+  ] as const) {
+    const out = await canvasToBlob(canvas, type, quality);
+    if (out && out.type === type) return new File([out], `style-anchor.${ext}`, { type });
+  }
+  throw new Error("Could not encode style anchor");
+}
+
 const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
-export function downloadFilename(mimeType: string, date = new Date()): string {
+export function fileTimestamp(date = new Date()): string {
   const pad = (n: number, len = 2) => String(n).padStart(len, "0");
-  const stamp =
+  return (
     `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-` +
-    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
-  return `intelligo-marketing-${stamp}.${EXTENSIONS[mimeType] ?? "png"}`;
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`
+  );
+}
+
+export function extensionFor(mimeType: string): string {
+  return EXTENSIONS[mimeType] ?? "png";
+}
+
+export function downloadFilename(mimeType: string, date = new Date()): string {
+  return `intelligo-marketing-${fileTimestamp(date)}.${extensionFor(mimeType)}`;
 }
 
 /** Downloads a blob with a unique, timestamped filename (never overwrites earlier files). */
-export function downloadBlob(blob: Blob) {
+export function downloadBlob(blob: Blob, filename = downloadFilename(blob.type)) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = downloadFilename(blob.type);
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
