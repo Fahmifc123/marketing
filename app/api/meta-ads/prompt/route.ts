@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { ValidationError, errorResponse, guardRequest, validateMetaAdInput } from "@/lib/api";
 import { isQualityId, resolveFormat } from "@/lib/image-settings";
+import { isLogoCorner } from "@/lib/logo-placement";
 import { getMetaSize } from "@/lib/meta-ads";
 import { buildMetaAdSlidePrompt } from "@/lib/prompt-builder";
 
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
       hasStyleAnchor: body.hasStyleAnchor === true,
       hasSizeMaster: body.hasSizeMaster === true,
       hasReference: body.hasReference === true,
+      logoCorner: isLogoCorner(body.logoCorner) ? body.logoCorner : null,
     });
     return NextResponse.json({ ok: true, prompt }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

@@ -4,14 +4,17 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import type { ReferenceImage } from "@/components/ReferenceUploader";
 import {
+  type ActiveLogo,
   base64ToBlob,
   copyText,
   createThumbnail,
   downloadBlob,
   exportExactSize,
+  finalizeImage,
   fileTimestamp,
   prepareStyleAnchor,
 } from "@/lib/client-image";
+import { buildChatGptInstructions } from "@/lib/chatgpt-instructions";
 import { META_AD_SIZES, META_ADS_LIMITS, parsePastedPrompt, type MetaAdSize, type MetaSizeId } from "@/lib/meta-ads";
 import { runPool } from "@/lib/pool";
 import { createZip } from "@/lib/zip";
@@ -27,6 +30,8 @@ interface Props {
   controls: ReactNode;
   onApiKeyError: (message: string) => void;
   onSaveToHistory: (item: HistoryItem) => Promise<void>;
+  /** Official logo to composite onto results (null = off). */
+  activeLogo: ActiveLogo | null;
   footer?: ReactNode;
 }
 
@@ -59,6 +64,89 @@ Slide 1: Hook — headline "KERJAAN MAKIN BANYAK?" dengan foto karyawan Indonesi
 Slide 2: Problem — visual to-do list panjang dan jam dinding, headline "WAKTU TERASA MAKIN SEDIKIT".
 Slide 3: Solusi — karyawan memakai AI tools di laptop dengan ekspresi lega, headline "KERJA LEBIH CERDAS DENGAN AI".
 Slide 4: CTA — layout bersih dengan tombol oranye "DAFTAR BOOTCAMP AI TOOLS".`;
+
+/** Step 0: copy-ready instructions so ChatGPT answers in the format this tab parses. */
+function ChatGptHelper({ sizes, activeLogo }: { sizes: MetaAdSize[]; activeLogo: ActiveLogo | null }) {
+  const id = useId();
+  const [topic, setTopic] = useState("");
+  const [count, setCount] = useState(5);
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const instructions = buildChatGptInstructions({
+    topic,
+    slideCount: count,
+    sizes,
+    logoCorner: activeLogo?.corner ?? null,
+  });
+
+  return (
+    <details className="group rounded-xl border border-line bg-canvas p-4">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-navy [&::-webkit-details-marker]:hidden">
+        <span aria-hidden="true" className="mr-1.5 inline-block transition-transform group-open:rotate-90">
+          ›
+        </span>
+        Belum punya prompt? Minta ke ChatGPT dulu
+      </summary>
+      <div className="mt-3 space-y-3">
+        <p className="text-xs leading-relaxed text-muted">
+          Copy instruksi ini ke ChatGPT. Jawabannya akan langsung dalam format yang bisa ditempel di bawah — lengkap dengan aturan brand
+          (tanpa harga/URL karangan, logo ditempel otomatis).
+        </p>
+        <div>
+          <label htmlFor={`${id}-topic`} className="mb-1 block text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+            Topik / brief campaign (opsional, bisa diisi di ChatGPT)
+          </label>
+          <textarea
+            id={`${id}-topic`}
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            rows={2}
+            placeholder="Contoh: Bootcamp AI Tools untuk karyawan, target 25–35 tahun, offer early bird (tanpa harga)."
+            className="field resize-y text-sm"
+          />
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor={`${id}-count`} className="mb-1 block text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+              Jumlah kartu
+            </label>
+            <select
+              id={`${id}-count`}
+              value={count}
+              onChange={(e) => setCount(Number(e.target.value))}
+              className="select w-28 py-2 text-sm"
+            >
+              {Array.from({ length: META_ADS_LIMITS.maxSlides }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n} kartu
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={async () => setStatus((await copyText(instructions)) ? "copied" : "failed")}
+            className="btn bg-navy text-white hover:bg-navy-700"
+          >
+            <span aria-live="polite">
+              {status === "copied" ? "Tersalin — tempel ke ChatGPT" : status === "failed" ? "Gagal copy, salin manual di bawah" : "Copy instruksi untuk ChatGPT"}
+            </span>
+          </button>
+        </div>
+        <details>
+          <summary className="cursor-pointer text-xs font-semibold text-navy-600 hover:text-navy">Lihat instruksi</summary>
+          <textarea
+            readOnly
+            value={instructions}
+            rows={12}
+            aria-label="Instruksi untuk ChatGPT"
+            onFocus={(e) => e.currentTarget.select()}
+            className="field mt-2 resize-y bg-white font-mono text-xs leading-relaxed"
+          />
+        </details>
+      </div>
+    </details>
+  );
+}
 
 function PromptPreview({ load }: { load: () => Promise<string> }) {
   const [state, setState] = useState<{ text: string | null; loading: boolean; error: boolean }>({
@@ -116,6 +204,7 @@ export default function MetaAdsGenerator({
   controls,
   onApiKeyError,
   onSaveToHistory,
+  activeLogo,
   footer,
 }: Props) {
   const pasteId = useId();
@@ -202,6 +291,7 @@ export default function MetaAdsGenerator({
         hasStyleAnchor: useAnchor && slideIndex > 1 && size.id === master?.id,
         hasSizeMaster: size.id !== master?.id,
         hasReference: Boolean(reference),
+        logoCorner: activeLogo?.corner ?? null,
       }),
     });
     const data = await res.json();
@@ -251,6 +341,7 @@ export default function MetaAdsGenerator({
     if (refs.styleAnchor) form.set("styleAnchor", refs.styleAnchor, refs.styleAnchor.name);
     if (reference) form.set("referenceImage", reference.file, reference.file.name);
     form.set("developerMode", String(devMode));
+    if (activeLogo) form.set("logoCorner", activeLogo.corner);
 
     try {
       const res = await fetch("/api/generate", { method: "POST", body: form, signal });
@@ -267,7 +358,9 @@ export default function MetaAdsGenerator({
         return { ok: false, code: data.error.code, message: data.error.message };
       }
 
-      const blob = base64ToBlob(data.image.b64, data.image.mimeType);
+      // Raw image (no logo) is returned for use as a reference; the display copy gets the official logo.
+      const raw = base64ToBlob(data.image.b64, data.image.mimeType);
+      const { blob } = await finalizeImage(raw, activeLogo);
       setJob(id, { status: "done", blob, url: URL.createObjectURL(blob) });
       try {
         const { meta } = data;
@@ -282,7 +375,7 @@ export default function MetaAdsGenerator({
           formatLabel: `Meta ${size.label}`,
           aspectRatio: size.ratio,
           size: meta.size,
-          mimeType: data.image.mimeType,
+          mimeType: blob.type,
           image: blob,
           thumbnail: await createThumbnail(blob),
           carousel: { groupId: groupIdRef.current, index: slide, total: target.slides.length, role: `Meta ${size.ratio}` },
@@ -290,7 +383,7 @@ export default function MetaAdsGenerator({
       } catch {
         // History is a convenience only.
       }
-      return { ok: true, blob };
+      return { ok: true, blob: raw };
     } catch (err) {
       const aborted = (err as Error).name === "AbortError";
       const message = aborted ? "Dibatalkan." : (err as Error).message || "Generation gagal. Coba lagi.";
@@ -497,6 +590,8 @@ export default function MetaAdsGenerator({
             </p>
           )}
         </fieldset>
+
+        <ChatGptHelper sizes={sizes} activeLogo={activeLogo} />
 
         <div>
           <label htmlFor={pasteId} className="label">

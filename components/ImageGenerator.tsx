@@ -9,8 +9,9 @@ import HistoryPanel from "@/components/HistoryPanel";
 import MetaAdsGenerator from "@/components/MetaAdsGenerator";
 import ImagePreview, { type PreviewStatus } from "@/components/ImagePreview";
 import PromptInput from "@/components/PromptInput";
+import LogoSettings, { useBrandLogo } from "@/components/LogoSettings";
 import ReferenceUploader, { type ReferenceImage } from "@/components/ReferenceUploader";
-import { base64ToBlob, copyText, createThumbnail, downloadBlob } from "@/lib/client-image";
+import { base64ToBlob, copyText, createThumbnail, downloadBlob, finalizeImage } from "@/lib/client-image";
 import { isStoryPrompt } from "@/lib/content-detection";
 import { addHistoryItem, deleteHistoryItem, listHistory } from "@/lib/history-store";
 import {
@@ -78,6 +79,9 @@ export default function ImageGenerator() {
     error: null,
   });
 
+  const brandLogo = useBrandLogo();
+  const activeLogo = brandLogo.activeLogo;
+  const logoCorner = activeLogo?.corner ?? null;
   const apiKeyRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const inFlight = useRef(false);
@@ -141,6 +145,7 @@ export default function ImageGenerator() {
             customRatio: settings.customRatio,
             formatExplicit: settings.formatExplicit,
             hasReference,
+            logoCorner,
           }),
         });
         const data = (await res.json()) as PromptPreviewResponse | { ok: false; error: { message: string } };
@@ -156,7 +161,7 @@ export default function ImageGenerator() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [previewable, prompt, settings, hasReference]);
+  }, [previewable, prompt, settings, hasReference, logoCorner]);
 
   function showResult(next: CreativeResult) {
     if (resultUrl.current) URL.revokeObjectURL(resultUrl.current);
@@ -204,6 +209,7 @@ export default function ImageGenerator() {
     }
     if (request.reference) form.set("referenceImage", request.reference.file, request.reference.file.name);
     form.set("developerMode", String(devMode));
+    if (activeLogo) form.set("logoCorner", activeLogo.corner);
     if (devMode && request.override !== null) form.set("promptOverride", request.override);
 
     const controller = new AbortController();
@@ -230,13 +236,14 @@ export default function ImageGenerator() {
         throw new Error(data.error.message);
       }
 
-      const blob = base64ToBlob(data.image.b64, data.image.mimeType);
+      // The official logo is composited by the browser — never drawn by the model.
+      const { blob } = await finalizeImage(base64ToBlob(data.image.b64, data.image.mimeType), activeLogo);
       const { meta } = data;
       const item: CreativeResult = {
         id: newId(),
         url: URL.createObjectURL(blob),
         blob,
-        mimeType: data.image.mimeType,
+        mimeType: blob.type,
         prompt: request.prompt.trim(),
         settings: { ...request.settings, formatId: meta.format.id, formatExplicit: true },
         modelLabel: meta.modelLabel,
@@ -394,6 +401,7 @@ export default function ImageGenerator() {
         disabled={loading}
       />
       <ReferenceUploader value={reference} onChange={setReference} disabled={loading} />
+      <LogoSettings logo={brandLogo} disabled={loading} />
     </>
   );
 
@@ -475,6 +483,7 @@ export default function ImageGenerator() {
           controls={sharedControls}
           onApiKeyError={focusApiKeyError}
           onSaveToHistory={saveToHistory}
+          activeLogo={activeLogo}
           footer={historyPanel}
         />
       ) : mode === "carousel" ? (
@@ -486,6 +495,7 @@ export default function ImageGenerator() {
           controls={sharedControls}
           onApiKeyError={focusApiKeyError}
           onSaveToHistory={saveToHistory}
+          activeLogo={activeLogo}
           footer={historyPanel}
         />
       ) : (

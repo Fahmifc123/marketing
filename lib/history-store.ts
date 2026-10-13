@@ -5,8 +5,10 @@
 import type { HistoryItem } from "@/types/image";
 
 const DB_NAME = "intelligo-marketing-kit";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "history";
+/** Brand assets (official logo files + preferences), kept in this browser only. */
+const BRAND_STORE = "brand";
 export const MAX_HISTORY_ITEMS = 40;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -23,6 +25,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains(STORE)) {
           const store = db.createObjectStore(STORE, { keyPath: "id" });
           store.createIndex("createdAt", "createdAt");
+        }
+        if (!db.objectStoreNames.contains(BRAND_STORE)) {
+          db.createObjectStore(BRAND_STORE);
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -72,5 +77,28 @@ export async function deleteHistoryItem(id: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(STORE, "readwrite");
   tx.objectStore(STORE).delete(id);
+  await transactionDone(tx);
+}
+
+// ---------- Brand assets ----------
+
+export type BrandAssetKey = "logo-primary" | "logo-on-dark" | "logo-prefs";
+
+export async function getBrandAsset<T>(key: BrandAssetKey): Promise<T | undefined> {
+  const db = await openDb();
+  return promisify(db.transaction(BRAND_STORE, "readonly").objectStore(BRAND_STORE).get(key) as IDBRequest<T | undefined>);
+}
+
+export async function setBrandAsset(key: BrandAssetKey, value: unknown): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(BRAND_STORE, "readwrite");
+  tx.objectStore(BRAND_STORE).put(value, key);
+  await transactionDone(tx);
+}
+
+export async function deleteBrandAsset(key: BrandAssetKey): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(BRAND_STORE, "readwrite");
+  tx.objectStore(BRAND_STORE).delete(key);
   await transactionDone(tx);
 }

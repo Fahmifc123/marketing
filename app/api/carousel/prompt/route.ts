@@ -9,6 +9,7 @@ import {
   validateSettings,
 } from "@/lib/api";
 import { resolveFormat } from "@/lib/image-settings";
+import { isLogoCorner } from "@/lib/logo-placement";
 import { buildCarouselSlidePrompt } from "@/lib/prompt-builder";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       aspectRatio: resolveFormat({ formatId: settings.formatId, customRatio: settings.customRatio }),
       hasStyleAnchor: body.useStyleAnchor === true && slideIndex > 1,
       hasReference: body.hasReference === true,
+      logoCorner: isLogoCorner(body.logoCorner) ? body.logoCorner : null,
     });
     return NextResponse.json({ ok: true, prompt }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

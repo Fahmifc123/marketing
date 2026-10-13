@@ -35,6 +35,7 @@ import {
   INTELLIGO_TEXT_RULES,
   REFERENCE_IMAGE_RULES,
 } from "@/lib/intelligo-style";
+import { describeLogoZone, type LogoCorner } from "@/lib/logo-placement";
 import type { CarouselPlan } from "@/types/carousel";
 import type { CampaignContext, ContentType, FunnelStage } from "@/types/generation";
 import type { QualityId, ResolvedFormat } from "@/types/image";
@@ -46,6 +47,8 @@ export interface BuildPromptInput {
   aspectRatio: ResolvedFormat;
   referenceImage?: { name?: string } | null;
   campaignContext?: CampaignContext;
+  /** Auto-logo: keep this corner empty for the official logo. */
+  logoCorner?: LogoCorner | null;
 }
 
 export interface BriefAnalysis {
@@ -78,6 +81,23 @@ const bullet = (lines: readonly string[]) => lines.map((l) => `- ${l}`).join("\n
 
 function section(title: string, body: string) {
   return `${title.toUpperCase()}:\n${body}`;
+}
+
+/**
+ * Logo rules. With auto-logo on, the model keeps a precise corner empty and the
+ * browser composites the official logo file there afterwards.
+ */
+function logoLines(logoCorner: LogoCorner | null | undefined, format: ResolvedFormat, logoReferenced: boolean): readonly string[] {
+  if (logoCorner) {
+    const { width, height } = format.generationSize;
+    return [
+      "NEVER draw, recreate, approximate or stylize the Intelligo ID logo or any brand mark — the official logo file is placed afterwards.",
+      `Keep this zone completely empty (no text, objects, faces or graphic elements): ${describeLogoZone(logoCorner, width, height)}.`,
+      "Keep the background in that zone plain and even so the official logo stays legible.",
+      'Do not write the words "Intelligo ID" as a logo-like wordmark anywhere.',
+    ];
+  }
+  return logoReferenced ? INTELLIGO_LOGO_RULES.withReference : INTELLIGO_LOGO_RULES.noReference;
 }
 
 function describeOrientation(format: ResolvedFormat) {
@@ -247,7 +267,7 @@ export function buildIntelligoPrompt(input: BuildPromptInput): string {
   const referenceIntents = hasReference ? detectReferenceIntents(userPrompt) : [];
   const logoReferenced = referenceIntents.includes("logo");
   parts.push(
-    section("Logo", bullet(logoReferenced ? INTELLIGO_LOGO_RULES.withReference : INTELLIGO_LOGO_RULES.noReference)),
+    section("Logo", bullet(logoLines(input.logoCorner, format, logoReferenced))),
   );
 
   // 12. Reference image instructions
@@ -282,6 +302,7 @@ export interface BuildSlidePromptInput {
   hasStyleAnchor: boolean;
   /** True when the marketer attached their own reference image. */
   hasReference: boolean;
+  logoCorner?: LogoCorner | null;
 }
 
 /**
@@ -379,7 +400,7 @@ export function buildCarouselSlidePrompt(input: BuildSlidePromptInput): string {
   );
 
   const logoReferenced = input.hasReference && detectReferenceIntents(input.brief).includes("logo");
-  parts.push(section("Logo", bullet(logoReferenced ? INTELLIGO_LOGO_RULES.withReference : INTELLIGO_LOGO_RULES.noReference)));
+  parts.push(section("Logo", bullet(logoLines(input.logoCorner, format, logoReferenced))));
 
   const referenceLines: string[] = [];
   if (input.hasStyleAnchor) {
@@ -428,6 +449,7 @@ export interface BuildMetaAdPromptInput {
   /** This same slide in the master size is attached and must be adapted to this size. */
   hasSizeMaster: boolean;
   hasReference: boolean;
+  logoCorner?: LogoCorner | null;
 }
 
 const PLACEMENT_GUIDANCE: Record<string, string[]> = {
@@ -532,7 +554,7 @@ export function buildMetaAdSlidePrompt(input: BuildMetaAdPromptInput): string {
   );
 
   const logoReferenced = input.hasReference && detectReferenceIntents(combined).includes("logo");
-  parts.push(section("Logo", bullet(logoReferenced ? INTELLIGO_LOGO_RULES.withReference : INTELLIGO_LOGO_RULES.noReference)));
+  parts.push(section("Logo", bullet(logoLines(input.logoCorner, format, logoReferenced))));
 
   // Attached images, in order: size master, style anchor, marketer's reference.
   const refs: string[] = [];

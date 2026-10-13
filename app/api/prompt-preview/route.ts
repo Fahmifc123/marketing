@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { ValidationError, errorResponse, guardRequest, validatePrompt, validateSettings } from "@/lib/api";
 import { isStoryPrompt } from "@/lib/content-detection";
 import { resolveFormat } from "@/lib/image-settings";
+import { isLogoCorner } from "@/lib/logo-placement";
 import { analyzeBrief, buildIntelligoPrompt } from "@/lib/prompt-builder";
 import type { PromptPreviewResponse } from "@/types/generation";
 
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
       quality: settings.quality,
       aspectRatio: format,
       referenceImage: body.hasReference === true ? {} : null,
+      logoCorner: isLogoCorner(body.logoCorner) ? body.logoCorner : null,
     });
     return NextResponse.json<PromptPreviewResponse>(
       { ok: true, prompt: internalPrompt, format, contentTypes: analyzeBrief(prompt).contentTypes },

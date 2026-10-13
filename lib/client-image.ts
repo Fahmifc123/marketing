@@ -1,5 +1,6 @@
 /** Browser-side image helpers. */
 import { REFERENCE_IMAGE } from "@/lib/image-settings";
+import { logoZone, type LogoCorner } from "@/lib/logo-placement";
 
 export function base64ToBlob(b64: string, mimeType: string): Blob {
   const binary = atob(b64);
@@ -102,6 +103,74 @@ export async function exportExactSize(blob: Blob, width: number, height: number)
   const out = await canvasToBlob(canvas, "image/png");
   if (!out) throw new Error("Could not encode image");
   return out;
+}
+
+export interface ActiveLogo {
+  corner: LogoCorner;
+  /** Logo for light backgrounds (required). */
+  primary: Blob;
+  /** Optional light/white version for dark backgrounds. */
+  onDark: Blob | null;
+}
+
+/** Average perceived luminance (0–255) of a canvas region. */
+function regionLuminance(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): number {
+  const { data } = ctx.getImageData(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 16) {
+    sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+    n++;
+  }
+  return n ? sum / n : 255;
+}
+
+/**
+ * Composites the official logo file into the reserved corner zone — the logo
+ * pixels are never altered, only scaled to fit. On a dark background the
+ * light version is used when one is saved.
+ */
+export async function compositeLogo(image: Blob, logo: ActiveLogo): Promise<Blob> {
+  const base = await createImageBitmap(image);
+  const canvas = document.createElement("canvas");
+  canvas.width = base.width;
+  canvas.height = base.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.drawImage(base, 0, 0);
+  base.close();
+
+  const zone = logoZone(logo.corner, canvas.width, canvas.height);
+  const zx = zone.x * canvas.width;
+  const zy = zone.y * canvas.height;
+  const zw = zone.width * canvas.width;
+  const zh = zone.height * canvas.height;
+
+  const dark = regionLuminance(ctx, zx, zy, zw, zh) < 110;
+  const mark = await createImageBitmap(dark && logo.onDark ? logo.onDark : logo.primary);
+  const scale = Math.min(zw / mark.width, zh / mark.height);
+  const w = mark.width * scale;
+  const h = mark.height * scale;
+  // Align to the corner's edges so the logo hugs the margin.
+  const x = logo.corner.endsWith("left") ? zx : zx + zw - w;
+  const y = logo.corner.startsWith("top") ? zy : zy + zh - h;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(mark, x, y, w, h);
+  mark.close();
+
+  const out = await canvasToBlob(canvas, "image/png");
+  if (!out) throw new Error("Could not encode image");
+  return out;
+}
+
+/** Applies the official logo when auto-logo is on; never fails the generation. */
+export async function finalizeImage(raw: Blob, logo: ActiveLogo | null): Promise<{ blob: Blob; logoApplied: boolean }> {
+  if (!logo) return { blob: raw, logoApplied: false };
+  try {
+    return { blob: await compositeLogo(raw, logo), logoApplied: true };
+  } catch {
+    return { blob: raw, logoApplied: false };
+  }
 }
 
 const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };

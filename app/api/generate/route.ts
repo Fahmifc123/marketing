@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { isStoryPrompt } from "@/lib/content-detection";
 import { getModel, PROMPT_LIMITS, resolveFormat } from "@/lib/image-settings";
+import { isLogoCorner } from "@/lib/logo-placement";
 import { generateImage, logSafeError, toUserFacingError } from "@/lib/openai";
 import {
   analyzeBrief,
@@ -68,6 +69,8 @@ export async function POST(request: NextRequest) {
     const styleAnchor = carousel || metaAd ? await validateReferenceImage(form.get("styleAnchor")) : null;
     const sizeMaster = metaAd ? await validateReferenceImage(form.get("sizeMaster")) : null;
     const developerMode = form.get("developerMode") === "true";
+    const logoCornerField = form.get("logoCorner");
+    const logoCorner = isLogoCorner(logoCornerField) ? logoCornerField : null;
 
     let promptOverride: string | null = null;
     const override = form.get("promptOverride");
@@ -77,13 +80,25 @@ export async function POST(request: NextRequest) {
       }
       promptOverride = override.trim();
     }
-    parsed = { apiKey, prompt, settings, reference, carousel, metaAd, styleAnchor, sizeMaster, developerMode, promptOverride };
+    parsed = {
+      apiKey,
+      prompt,
+      settings,
+      reference,
+      carousel,
+      metaAd,
+      styleAnchor,
+      sizeMaster,
+      developerMode,
+      promptOverride,
+      logoCorner,
+    };
   } catch (err) {
     if (err instanceof ValidationError) return errorResponse(400, err.code, err.message);
     return errorResponse(400, "invalid_request", "Request tidak valid. Coba lagi.");
   }
 
-  const { apiKey, prompt, settings, reference, carousel, metaAd, styleAnchor, sizeMaster, developerMode, promptOverride } =
+  const { apiKey, prompt, settings, reference, carousel, metaAd, styleAnchor, sizeMaster, developerMode, promptOverride, logoCorner } =
     parsed;
   const model = getModel(settings.model)!;
   const format = resolveFormat({
@@ -102,6 +117,7 @@ export async function POST(request: NextRequest) {
           hasStyleAnchor: Boolean(styleAnchor),
           hasSizeMaster: Boolean(sizeMaster),
           hasReference: Boolean(reference),
+          logoCorner,
         })
       : carousel
       ? buildCarouselSlidePrompt({
@@ -112,6 +128,7 @@ export async function POST(request: NextRequest) {
           aspectRatio: format,
           hasStyleAnchor: Boolean(styleAnchor),
           hasReference: Boolean(reference),
+          logoCorner,
         })
       : buildIntelligoPrompt({
           userPrompt: prompt,
@@ -119,6 +136,7 @@ export async function POST(request: NextRequest) {
           quality: settings.quality,
           aspectRatio: format,
           referenceImage: reference ? { name: reference.displayName } : null,
+          logoCorner,
         }));
 
   // Order matters: the prompts refer to "the first / second attached image".

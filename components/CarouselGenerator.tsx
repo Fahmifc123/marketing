@@ -8,10 +8,12 @@ import type { ReferenceImage } from "@/components/ReferenceUploader";
 import { CAROUSEL_LIMITS, detectSlideCount } from "@/lib/carousel";
 import { verifyCarouselPlan } from "@/lib/carousel-verifier";
 import {
+  type ActiveLogo,
   base64ToBlob,
   createThumbnail,
   downloadBlob,
   extensionFor,
+  finalizeImage,
   fileTimestamp,
   prepareStyleAnchor,
 } from "@/lib/client-image";
@@ -31,6 +33,8 @@ interface Props {
   controls: ReactNode;
   onApiKeyError: (message: string) => void;
   onSaveToHistory: (item: HistoryItem) => Promise<void>;
+  /** Official logo to composite onto results (null = off). */
+  activeLogo: ActiveLogo | null;
   footer?: ReactNode;
 }
 
@@ -62,6 +66,7 @@ export default function CarouselGenerator({
   controls,
   onApiKeyError,
   onSaveToHistory,
+  activeLogo,
   footer,
 }: Props) {
   const briefId = useId();
@@ -196,6 +201,7 @@ export default function CarouselGenerator({
         customRatio: settings.customRatio,
         useStyleAnchor: useAnchor,
         hasReference: Boolean(reference),
+        logoCorner: activeLogo?.corner ?? null,
       }),
     });
     const data = await res.json();
@@ -239,6 +245,7 @@ export default function CarouselGenerator({
     if (anchor && index > 1) form.set("styleAnchor", anchor, anchor.name);
     if (reference) form.set("referenceImage", reference.file, reference.file.name);
     form.set("developerMode", String(devMode));
+    if (activeLogo) form.set("logoCorner", activeLogo.corner);
 
     try {
       const res = await fetch("/api/generate", { method: "POST", body: form, signal });
@@ -255,7 +262,9 @@ export default function CarouselGenerator({
         return { ok: false, code: data.error.code, message: data.error.message };
       }
 
-      const blob = base64ToBlob(data.image.b64, data.image.mimeType);
+      // Raw image (no logo) stays the style anchor; the display copy gets the official logo.
+      const raw = base64ToBlob(data.image.b64, data.image.mimeType);
+      const { blob } = await finalizeImage(raw, activeLogo);
       setJob(index, { status: "done", blob, url: URL.createObjectURL(blob) });
 
       try {
@@ -272,7 +281,7 @@ export default function CarouselGenerator({
           aspectRatio: meta.format.ratio,
           size: meta.size,
           customRatio: meta.format.id === "custom" ? settings.customRatio : undefined,
-          mimeType: data.image.mimeType,
+          mimeType: blob.type,
           image: blob,
           thumbnail: await createThumbnail(blob),
           carousel: { groupId: groupIdRef.current, index, total: target.slides.length, role: slide.role },
@@ -280,7 +289,7 @@ export default function CarouselGenerator({
       } catch {
         // History is a convenience only.
       }
-      return { ok: true, blob };
+      return { ok: true, blob: raw };
     } catch (err) {
       const aborted = (err as Error).name === "AbortError";
       const message = aborted ? "Dibatalkan." : (err as Error).message || "Generation gagal. Coba lagi.";

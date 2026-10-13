@@ -45,6 +45,25 @@ The pasted prompt is the primary creative direction. `buildMetaAdSlidePrompt` ad
 wherever the prompt leaves gaps. It also adds Meta placement safe zones (Stories/Reels keep the top 14% and bottom 20%
 clear). The logo and no-invention rules always apply.
 
+### Official logo (auto)
+
+The image model never draws the logo.
+
+1. In **Tempel logo resmi otomatis** (shared controls), upload the official logo once. It is saved in this browser
+   (IndexedDB). An optional white version can be added for dark backgrounds.
+2. With auto-logo on, every prompt asks the model to keep an exact corner zone empty (`lib/logo-placement.ts`). For
+   9:16, that zone sits inside the Stories/Reels safe area.
+3. The browser then composites the original logo file into that zone, scaled only. If the zone is dark and a white
+   version is saved, the white version is used.
+4. Style anchors and size masters stay logo-free, so the model never copies the logo into other images.
+
+### ChatGPT instructions
+
+**Belum punya prompt? Minta ke ChatGPT dulu** (Meta Ads tab) copies ready-made instructions for ChatGPT
+(`lib/chatgpt-instructions.ts`). They contain the brief, the card count, the chosen sizes, the logo corner and the brand
+rules (no invented prices, URLs or QR codes). ChatGPT then answers in exactly the `Gaya umum:` / `Slide N:` format the
+paste parser expects.
+
 ## Carousel (multi-slide)
 
 The **Carousel** tab produces a whole carousel in one flow. A main agent plans and verifies every slide before
