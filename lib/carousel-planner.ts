@@ -131,7 +131,7 @@ function buildRevisionInput(base: string, plan: CarouselPlan, issues: PlanIssue[
 }
 
 /** Errors that make planning (and image generation) pointless. */
-function isFatal(err: unknown): boolean {
+export function isFatal(err: unknown): boolean {
   if (err instanceof OpenAI.AuthenticationError) return true;
   if (err instanceof OpenAI.APIError) {
     return err.code === "insufficient_quota" || err.code === "billing_hard_limit_reached";

@@ -31,6 +31,13 @@ function slideText(slide: CarouselSlidePlan) {
   return `${slide.headline}\n${slide.supportingText}`;
 }
 
+/** Returns an overclaim (e.g. "dijamin kerja") found in `text` but not in `brief`, or null. */
+export function findOverclaim(text: string, brief: string): string | null {
+  const claim = text.match(CLAIM_PATTERN);
+  if (!claim) return null;
+  return new RegExp(claim[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(brief) ? null : claim[0];
+}
+
 export function findUnsupportedFacts(text: string, brief: string): string[] {
   const nb = normalize(brief);
   const found = new Set<string>();

@@ -74,6 +74,24 @@ With **Teks dipasang aplikasi** on (the default):
 4. Copy and logo are composed on the exact final frame (1080×1350 / 1080×1080 / 1080×1920), so they are never cropped.
 5. **Edit teks** in the results re-typesets that card in every size from the raw images. No new API calls are made.
 
+### Ads Manager copy (Meta Ads)
+
+The **Copy iklan** panel in the Meta Ads tab writes the Ads Manager fields with an OpenAI text model. It uses the
+user's key and `CAROUSEL_PLANNER_MODEL`. Code: `lib/meta-copy*.ts`, `app/api/meta-ads/copy`.
+
+- **Fields:**
+  - 3 primary-text variants with different angles, recommended ≤ 125 characters each.
+  - A headline (≤ 40 characters) and description (≤ 30 characters) per card.
+  - A standard Meta CTA button with a one-line reason.
+- **Source:** only what the marketer wrote (shared direction, card prompts, on-image text) is sent.
+- **Verification:**
+  - The same rule-based checks as the carousel run on the result: invented prices, dates, percentages, URLs and
+    overclaims are errors, and over-length fields are warnings.
+  - One automatic revision round runs on errors.
+  - Edits are re-verified live in the browser.
+- **Output:** per-field copy buttons, character counters, and **Copy semua** (the selected variant plus every card).
+- **Not generated:** the website URL. It is always entered manually in Ads Manager.
+
 ### ChatGPT instructions
 
 **Belum punya prompt? Minta ke ChatGPT dulu** (Meta Ads tab) copies ready-made instructions for ChatGPT

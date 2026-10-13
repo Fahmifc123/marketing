@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import MetaAdCopy from "@/components/MetaAdCopy";
 import type { ReferenceImage } from "@/components/ReferenceUploader";
 import {
   type ActiveLogo,
@@ -1147,6 +1148,19 @@ export default function MetaAdsGenerator({
               )}
             </dialog>
           </section>
+        )}
+
+        {draft && (
+          <MetaAdCopy
+            apiKey={apiKey}
+            input={
+              view === "results" && approved
+                ? { sharedContext: approved.draft.shared, slides: approved.draft.slides, texts: approved.draft.texts }
+                : { sharedContext: draft.shared, slides: draft.slides, texts: draft.texts }
+            }
+            onApiKeyError={onApiKeyError}
+            disabled={running || emptySlide || tooMany}
+          />
         )}
 
         {footer}
