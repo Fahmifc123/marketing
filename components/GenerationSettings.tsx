@@ -20,11 +20,13 @@ interface Props {
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   autoStory: boolean;
+  /** Hidden in Meta Ads mode, where sizes are picked with checkboxes. */
+  showFormat?: boolean;
   disabled?: boolean;
 }
 
 const GenerationSettings = forwardRef<HTMLInputElement, Props>(function GenerationSettings(
-  { apiKey, onApiKeyChange, apiKeyError, settings, onSettingsChange, autoStory, disabled },
+  { apiKey, onApiKeyChange, apiKeyError, settings, onSettingsChange, autoStory, showFormat = true, disabled },
   apiKeyRef,
 ) {
   const ids = {
@@ -135,85 +137,87 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
         </div>
       </div>
 
-      <div>
-        <label htmlFor={ids.format} className="label">
-          Format
-        </label>
-        <select
-          id={ids.format}
-          value={settings.formatId}
-          onChange={(e) => update({ formatId: e.target.value as FormatId, formatExplicit: true })}
-          disabled={disabled}
-          aria-describedby={ids.formatHelp}
-          className="select"
-        >
-          {FORMAT_PRESETS.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.label}
-              {f.id !== "custom" ? ` ${f.ratio}` : ""}
-            </option>
-          ))}
-        </select>
+      {showFormat && (
+        <div>
+          <label htmlFor={ids.format} className="label">
+            Format
+          </label>
+          <select
+            id={ids.format}
+            value={settings.formatId}
+            onChange={(e) => update({ formatId: e.target.value as FormatId, formatExplicit: true })}
+            disabled={disabled}
+            aria-describedby={ids.formatHelp}
+            className="select"
+          >
+            {FORMAT_PRESETS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+                {f.id !== "custom" ? ` ${f.ratio}` : ""}
+              </option>
+            ))}
+          </select>
 
-        {settings.formatId === "custom" && (
-          <fieldset className="mt-3 flex items-end gap-2">
-            <legend className="sr-only">Custom aspect ratio</legend>
-            <div className="flex-1">
-              <label htmlFor={ids.customW} className="mb-1 block text-xs text-muted">
-                Width ratio
-              </label>
-              <input
-                id={ids.customW}
-                type="number"
-                min={1}
-                max={100}
-                inputMode="numeric"
-                value={settings.customRatio.width || ""}
-                onChange={(e) =>
-                  update({ customRatio: { ...settings.customRatio, width: Number(e.target.value) } })
-                }
-                disabled={disabled}
-                className="field"
-              />
-            </div>
-            <span aria-hidden="true" className="pb-2.5 text-lg font-semibold text-muted">
-              :
-            </span>
-            <div className="flex-1">
-              <label htmlFor={ids.customH} className="mb-1 block text-xs text-muted">
-                Height ratio
-              </label>
-              <input
-                id={ids.customH}
-                type="number"
-                min={1}
-                max={100}
-                inputMode="numeric"
-                value={settings.customRatio.height || ""}
-                onChange={(e) =>
-                  update({ customRatio: { ...settings.customRatio, height: Number(e.target.value) } })
-                }
-                disabled={disabled}
-                className="field"
-              />
-            </div>
-          </fieldset>
-        )}
-
-        <p id={ids.formatHelp} className="mt-1.5 text-xs leading-relaxed text-muted" aria-live="polite">
-          {settings.formatId === "custom" && !customValid ? (
-            <span className="text-danger">Rasio harus antara 1:3 dan 3:1.</span>
-          ) : (
-            <>
-              {resolved.autoSelected && (
-                <span className="font-medium text-navy">Story terdeteksi — otomatis 9:16. </span>
-              )}
-              Generate {formatSize(resolved.generationSize)}
-              {resolved.exportSize ? ` · final ${formatSize(resolved.exportSize)} di Canva` : ""}
-            </>
+          {settings.formatId === "custom" && (
+            <fieldset className="mt-3 flex items-end gap-2">
+              <legend className="sr-only">Custom aspect ratio</legend>
+              <div className="flex-1">
+                <label htmlFor={ids.customW} className="mb-1 block text-xs text-muted">
+                  Width ratio
+                </label>
+                <input
+                  id={ids.customW}
+                  type="number"
+                  min={1}
+                  max={100}
+                  inputMode="numeric"
+                  value={settings.customRatio.width || ""}
+                  onChange={(e) =>
+                    update({ customRatio: { ...settings.customRatio, width: Number(e.target.value) } })
+                  }
+                  disabled={disabled}
+                  className="field"
+                />
+              </div>
+              <span aria-hidden="true" className="pb-2.5 text-lg font-semibold text-muted">
+                :
+              </span>
+              <div className="flex-1">
+                <label htmlFor={ids.customH} className="mb-1 block text-xs text-muted">
+                  Height ratio
+                </label>
+                <input
+                  id={ids.customH}
+                  type="number"
+                  min={1}
+                  max={100}
+                  inputMode="numeric"
+                  value={settings.customRatio.height || ""}
+                  onChange={(e) =>
+                    update({ customRatio: { ...settings.customRatio, height: Number(e.target.value) } })
+                  }
+                  disabled={disabled}
+                  className="field"
+                />
+              </div>
+            </fieldset>
           )}
-        </p>
-      </div>
+
+          <p id={ids.formatHelp} className="mt-1.5 text-xs leading-relaxed text-muted" aria-live="polite">
+            {settings.formatId === "custom" && !customValid ? (
+              <span className="text-danger">Rasio harus antara 1:3 dan 3:1.</span>
+            ) : (
+              <>
+                {resolved.autoSelected && (
+                  <span className="font-medium text-navy">Story terdeteksi — otomatis 9:16. </span>
+                )}
+                Generate {formatSize(resolved.generationSize)}
+                {resolved.exportSize ? ` · final ${formatSize(resolved.exportSize)} di Canva` : ""}
+              </>
+            )}
+          </p>
+        </div>
+      )}
     </div>
   );
 });

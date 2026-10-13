@@ -6,6 +6,7 @@ import CarouselGenerator from "@/components/CarouselGenerator";
 import DeveloperMode from "@/components/DeveloperMode";
 import GenerationSettings from "@/components/GenerationSettings";
 import HistoryPanel from "@/components/HistoryPanel";
+import MetaAdsGenerator from "@/components/MetaAdsGenerator";
 import ImagePreview, { type PreviewStatus } from "@/components/ImagePreview";
 import PromptInput from "@/components/PromptInput";
 import ReferenceUploader, { type ReferenceImage } from "@/components/ReferenceUploader";
@@ -67,7 +68,7 @@ export default function ImageGenerator() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyAvailable, setHistoryAvailable] = useState(true);
 
-  const [mode, setMode] = useState<"single" | "carousel">("single");
+  const [mode, setMode] = useState<"single" | "carousel" | "meta">("single");
   const [devMode, setDevMode] = useState(false);
   const [override, setOverride] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<GenerationMeta | null>(null);
@@ -389,6 +390,7 @@ export default function ImageGenerator() {
         settings={settings}
         onSettingsChange={setSettings}
         autoStory={mode === "single" && autoStory}
+        showFormat={mode !== "meta"}
         disabled={loading}
       />
       <ReferenceUploader value={reference} onChange={setReference} disabled={loading} />
@@ -440,11 +442,12 @@ export default function ImageGenerator() {
         </label>
       </div>
 
-      <div role="tablist" aria-label="Creation mode" className="mb-5 inline-flex rounded-lg border border-line bg-white p-1">
+      <div role="tablist" aria-label="Creation mode" className="mb-5 inline-flex max-w-full overflow-x-auto rounded-lg border border-line bg-white p-1">
         {(
           [
             ["single", "Single Image"],
-            ["carousel", "Carousel (multi-slide)"],
+            ["meta", "Meta Ads Carousel"],
+            ["carousel", "Carousel AI Planner"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -454,7 +457,7 @@ export default function ImageGenerator() {
             aria-selected={mode === id}
             onClick={() => setMode(id)}
             disabled={loading}
-            className={`rounded-md px-4 py-2 text-xs font-semibold tracking-[0.08em] uppercase transition-colors ${
+            className={`rounded-md px-4 py-2 text-xs font-semibold tracking-[0.08em] whitespace-nowrap uppercase transition-colors ${
               mode === id ? "bg-navy text-white" : "text-muted hover:text-navy"
             }`}
           >
@@ -463,7 +466,18 @@ export default function ImageGenerator() {
         ))}
       </div>
 
-      {mode === "carousel" ? (
+      {mode === "meta" ? (
+        <MetaAdsGenerator
+          apiKey={apiKey}
+          settings={settings}
+          reference={reference}
+          devMode={devMode}
+          controls={sharedControls}
+          onApiKeyError={focusApiKeyError}
+          onSaveToHistory={saveToHistory}
+          footer={historyPanel}
+        />
+      ) : mode === "carousel" ? (
         <CarouselGenerator
           apiKey={apiKey}
           settings={settings}

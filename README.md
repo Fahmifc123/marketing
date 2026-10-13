@@ -13,6 +13,38 @@ complete image prompt with the brand palette, design language, logo policy, mark
 Idea → Prompt → Intelligo Style Engine → GPT-Image → Creative
 ```
 
+## Meta Ads Carousel
+
+This is a tab for marketers who write the final prompt in ChatGPT.
+
+1. Paste the ChatGPT answer.
+   - Slides are split on headings like `Slide 1:`, `**Slide 2 – Problem**`, `Slide ke-3` or `Card 4`.
+   - Text before the first slide applies to every card.
+   - Text with no headings becomes a single image.
+2. Tick the sizes you need. Each tick is an exact Meta Ads Manager export:
+
+   | Size | Ratio | Placement |
+   | --- | --- | --- |
+   | 1080×1350 | 4:5 | Feed |
+   | 1080×1080 | 1:1 | Square |
+   | 1080×1920 | 9:16 | Stories & Reels |
+
+3. Review and edit each card's prompt. Meta allows at most 10 cards. In Developer Mode you can see each card's final
+   prompt.
+4. Generate. This makes slides × sizes images:
+   - Card 1 is made first in the master size, the first ticked size in the order 4:5 → 1:1 → 9:16. It becomes the
+     style anchor for the other cards.
+   - The other cards are then made in the master size, in parallel.
+   - Every other size is then adapted from the same card's master image, so the copy and design match across
+     placements.
+   - At most 3 requests run at a time. A failed card can be retried on its own.
+5. Downloads are resized in the browser to the exact pixel size. "Download All" gives a ZIP with one folder per size
+   (`1080x1350/card-01-1080x1350.png`, …).
+
+The pasted prompt is the primary creative direction. `buildMetaAdSlidePrompt` adds the Intelligo brand system
+wherever the prompt leaves gaps. It also adds Meta placement safe zones (Stories/Reels keep the top 14% and bottom 20%
+clear). The logo and no-invention rules always apply.
+
 ## Carousel (multi-slide)
 
 The **Carousel** tab produces a whole carousel in one flow. A main agent plans and verifies every slide before
@@ -96,6 +128,7 @@ app/
   api/prompt-preview/      → Developer Mode: internal prompt preview
   api/carousel/plan/       → carousel planner + verifier (no image generation)
   api/carousel/prompt/     → Developer Mode: internal prompt of one carousel slide
+  api/meta-ads/prompt/     → Developer Mode: internal prompt of one Meta Ads card
 components/                → AccessGate, Header, ImageGenerator, GenerationSettings,
                              ReferenceUploader, PromptInput, QuickPrompts, ImagePreview,
                              HistoryPanel, DeveloperMode

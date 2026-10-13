@@ -413,3 +413,150 @@ export function buildCarouselSlidePrompt(input: BuildSlidePromptInput): string {
   parts.push(`Aspect ratio: ${format.ratio}.`);
   return parts.join("\n\n");
 }
+
+export interface BuildMetaAdPromptInput {
+  /** Pasted text that applies to every slide (may be empty). */
+  sharedContext: string;
+  /** Pasted prompt for this slide. */
+  slidePrompt: string;
+  slideIndex: number;
+  totalSlides: number;
+  quality: QualityId;
+  aspectRatio: ResolvedFormat;
+  /** Slide 1 (in the master size) is attached as the series style reference. */
+  hasStyleAnchor: boolean;
+  /** This same slide in the master size is attached and must be adapted to this size. */
+  hasSizeMaster: boolean;
+  hasReference: boolean;
+}
+
+const PLACEMENT_GUIDANCE: Record<string, string[]> = {
+  "1:1": [
+    "Meta placement: square feed / carousel card. Keep the composition centered and balanced; it is often seen small on mobile, so use one bold focal point.",
+  ],
+  "4:5": [
+    "Meta placement: Instagram & Facebook feed (portrait). Use the full vertical space; keep the headline in the upper part and key content away from the bottom ~8% where captions overlap.",
+  ],
+  "9:16": [
+    "Meta placement: Stories & Reels (full screen). Keep the top ~14% and bottom ~20% free of text, faces and key content — Meta's interface covers those zones.",
+    "Stack the layout vertically; do not simply letterbox a square design.",
+  ],
+};
+
+/**
+ * Builds the internal prompt for one Meta Ads carousel card in one size.
+ * The marketer's pasted prompt (written in ChatGPT) is the primary creative
+ * direction; the Intelligo brand engine fills in everything it leaves open
+ * and always enforces the logo and no-invention rules.
+ */
+export function buildMetaAdSlidePrompt(input: BuildMetaAdPromptInput): string {
+  const format = input.aspectRatio;
+  const combined = `${input.sharedContext}\n${input.slidePrompt}`;
+  const brief = analyzeBrief(combined);
+  const { palette } = INTELLIGO_BRAND_SYSTEM;
+  const isCarousel = input.totalSlides > 1;
+  const parts: string[] = [];
+
+  parts.push(
+    isCarousel
+      ? `Create card ${input.slideIndex} of ${input.totalSlides} of a Meta Ads carousel for ${INTELLIGO_BRAND_SYSTEM.name}, an Indonesian education and career-skills company. Render ONLY this single card — not a grid, collage or multiple cards.`
+      : `Create a Meta Ads creative for ${INTELLIGO_BRAND_SYSTEM.name}, an Indonesian education and career-skills company.`,
+  );
+
+  if (input.sharedContext.trim()) {
+    parts.push(
+      section(
+        "Campaign direction from the marketing team (applies to every card)",
+        `"""\n${input.sharedContext.trim()}\n"""`,
+      ),
+    );
+  }
+  parts.push(
+    section(
+      isCarousel ? `Creative prompt for card ${input.slideIndex} (primary direction — follow it faithfully)` : "Creative prompt (primary direction — follow it faithfully)",
+      `"""\n${input.slidePrompt.trim()}\n"""`,
+    ),
+  );
+  parts.push(
+    "How to combine the rules below with the prompt above: wherever the prompt specifies composition, subject, copy, colors or style, follow the prompt. Apply the Intelligo ID brand system to everything the prompt leaves open. The logo rules and the no-invention rules always apply.",
+  );
+
+  parts.push(
+    section(
+      "Intelligo ID brand system",
+      bullet([
+        `Positioning: ${INTELLIGO_BRAND_SYSTEM.positioning} ${INTELLIGO_BRAND_SYSTEM.promise}`,
+        `Feel: ${INTELLIGO_BRAND_SYSTEM.personality.join(", ")}.`,
+        `Palette: navy ${palette.primary.hex} dominant (shades ${palette.navyShades.join(", ")}); orange ${palette.accent.hex} only as accent / CTA (tints ${palette.orangeShades.slice(0, 3).join(", ")}); neutrals ${Object.values(palette.neutrals).join(", ")}.`,
+        ...INTELLIGO_BRAND_SYSTEM.designPrinciples.map((p) => p.charAt(0).toUpperCase() + p.slice(1) + "."),
+      ]),
+    ),
+  );
+
+  const formatLines = [
+    `Aspect ratio ${format.ratio} (${describeOrientation(format)}), composed natively at ${format.generationSize.width}x${format.generationSize.height}px.`,
+    format.exportSize
+      ? `It will be delivered at exactly ${format.exportSize.width}x${format.exportSize.height}px for Meta Ads Manager. Keep key content ~6% away from every edge.`
+      : "Keep key content ~6% away from every edge.",
+    ...(PLACEMENT_GUIDANCE[format.ratio] ?? []),
+    "Ad creative best practice: thumb-stopping at small sizes, one clear message, minimal text overlay, strong contrast.",
+    ...(isCarousel && input.slideIndex < input.totalSlides
+      ? ["Carousel card: design it to invite a swipe to the next card (subtle visual continuation or arrow)."]
+      : []),
+    qualityDirection(input.quality),
+  ];
+  parts.push(section("Format & Meta placement", bullet(formatLines)));
+
+  const textLines = [...INTELLIGO_TEXT_RULES.base];
+  if (brief.exactText.length > 0) {
+    textLines.push(INTELLIGO_TEXT_RULES.exactTextIntro, ...brief.exactText.map((t) => `  • "${t}"`));
+  }
+  textLines.push(
+    brief.urls.length > 0
+      ? `Only use these URLs, exactly as written: ${brief.urls.map((u) => `"${u}"`).join(", ")}.`
+      : "Do not show any URL, website address or social handle.",
+  );
+  textLines.push(
+    brief.wantsQrCode
+      ? "A QR code was requested: leave a clean empty square placeholder for the verified QR code. Do NOT draw any QR pattern."
+      : "Do not include any QR code.",
+  );
+  textLines.push(INTELLIGO_MARKETING_RULES.noInvention);
+  parts.push(section("Typography & text", bullet(textLines)));
+
+  parts.push(
+    section(
+      "People & imagery",
+      bullet([INTELLIGO_PEOPLE_RULES.optional, ...INTELLIGO_PEOPLE_RULES.include, ...INTELLIGO_QUALITY_RULES.photography, ...INTELLIGO_QUALITY_RULES.illustration]),
+    ),
+  );
+
+  const logoReferenced = input.hasReference && detectReferenceIntents(combined).includes("logo");
+  parts.push(section("Logo", bullet(logoReferenced ? INTELLIGO_LOGO_RULES.withReference : INTELLIGO_LOGO_RULES.noReference)));
+
+  // Attached images, in order: size master, style anchor, marketer's reference.
+  const refs: string[] = [];
+  let position = 0;
+  const ordinal = () => ["FIRST", "SECOND", "THIRD"][position++] ?? "NEXT";
+  if (input.hasSizeMaster) {
+    refs.push(
+      `The ${ordinal()} attached image is THIS SAME card already approved in another size. Recreate the same design for ${format.ratio}: identical copy, subject, colors, typography and style — only re-flow the layout to fit the new frame and its safe zones. Do not crop text or squeeze elements.`,
+    );
+  }
+  if (input.hasStyleAnchor) {
+    refs.push(
+      `The ${ordinal()} attached image is card 1 of this carousel. Match its typography style, margins, color balance and graphic language so all cards read as one series — but do NOT copy its headline, subject or composition.`,
+    );
+  }
+  if (input.hasReference) {
+    refs.push(
+      `The ${ordinal()} attached image is the marketer's reference.`,
+      ...detectReferenceIntents(combined).map((intent) => REFERENCE_IMAGE_RULES[intent]),
+    );
+  }
+  if (refs.length > 0) parts.push(section("Reference images", bullet(refs)));
+
+  parts.push(section("Avoid", bullet(INTELLIGO_NEGATIVE_RULES)));
+  parts.push(`Aspect ratio: ${format.ratio}.`);
+  return parts.join("\n\n");
+}

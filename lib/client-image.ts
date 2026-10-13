@@ -81,6 +81,29 @@ export async function prepareStyleAnchor(blob: Blob, maxEdge: number): Promise<F
   throw new Error("Could not encode style anchor");
 }
 
+/**
+ * Resizes a generated image to an exact delivery size (e.g. 1080x1350 for Meta).
+ * The generation size has the same aspect ratio, so this is a clean downscale;
+ * any rounding difference is center-cropped.
+ */
+export async function exportExactSize(blob: Blob, width: number, height: number): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  const scale = Math.max(width / bitmap.width, height / bitmap.height);
+  const w = bitmap.width * scale;
+  const h = bitmap.height * scale;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bitmap, (width - w) / 2, (height - h) / 2, w, h);
+  bitmap.close();
+  const out = await canvasToBlob(canvas, "image/png");
+  if (!out) throw new Error("Could not encode image");
+  return out;
+}
+
 const EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
 export function fileTimestamp(date = new Date()): string {

@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE, isSameOriginRequest, verifySessionToken } from "@/lib/auth";
 import { PlanValidationError, parseCarouselPlan } from "@/lib/carousel";
+import { META_ADS_LIMITS } from "@/lib/meta-ads";
 import {
   DEFAULT_CUSTOM_RATIO,
   PROMPT_LIMITS,
@@ -171,4 +172,55 @@ export function validateCarouselSlide(value: FormDataEntryValue | null) {
     throw new ValidationError("invalid_plan", "Rencana carousel tidak valid.");
   }
   return validateCarouselPlanInput(data.plan, data.slideIndex);
+}
+
+export interface MetaAdSlideInput {
+  sharedContext: string;
+  slidePrompt: string;
+  slideIndex: number;
+  totalSlides: number;
+}
+
+/** Validates one Meta Ads card: pasted shared context + slide prompt + position. */
+export function validateMetaAdInput(input: unknown): MetaAdSlideInput {
+  const data = (input ?? {}) as Record<string, unknown>;
+  const sharedContext = typeof data.sharedContext === "string" ? data.sharedContext.trim() : "";
+  const slidePrompt = typeof data.slidePrompt === "string" ? data.slidePrompt.trim() : "";
+  const slideIndex = Number(data.slideIndex);
+  const totalSlides = Number(data.totalSlides);
+
+  if (sharedContext.length > META_ADS_LIMITS.maxSharedLength) {
+    throw new ValidationError("invalid_prompt", "Bagian prompt umum terlalu panjang.");
+  }
+  if (slidePrompt.length < META_ADS_LIMITS.minSlideLength) {
+    throw new ValidationError("invalid_prompt", "Prompt slide kosong.");
+  }
+  if (slidePrompt.length > META_ADS_LIMITS.maxSlideLength) {
+    throw new ValidationError("invalid_prompt", `Prompt slide terlalu panjang (maks ${META_ADS_LIMITS.maxSlideLength} karakter).`);
+  }
+  if (
+    !Number.isInteger(totalSlides) ||
+    totalSlides < 1 ||
+    totalSlides > META_ADS_LIMITS.maxSlides ||
+    !Number.isInteger(slideIndex) ||
+    slideIndex < 1 ||
+    slideIndex > totalSlides
+  ) {
+    throw new ValidationError("invalid_prompt", "Nomor slide tidak valid.");
+  }
+  return { sharedContext, slidePrompt, slideIndex, totalSlides };
+}
+
+/** Parses the optional `metaAd` form field (JSON). */
+export function validateMetaAdField(value: FormDataEntryValue | null): MetaAdSlideInput | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > 20_000) {
+    throw new ValidationError("invalid_prompt", "Prompt Meta Ads tidak valid.");
+  }
+  try {
+    return validateMetaAdInput(JSON.parse(value));
+  } catch (err) {
+    if (err instanceof ValidationError) throw err;
+    throw new ValidationError("invalid_prompt", "Prompt Meta Ads tidak valid.");
+  }
 }
