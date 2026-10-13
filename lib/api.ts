@@ -9,6 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, isSameOriginRequest, verifySessionToken } from "@/lib/auth";
 import { PlanValidationError, parseCarouselPlan } from "@/lib/carousel";
 import { META_ADS_LIMITS } from "@/lib/meta-ads";
+import { isTextLayout, type TextLayout } from "@/lib/text-layout";
 import {
   DEFAULT_CUSTOM_RATIO,
   PROMPT_LIMITS,
@@ -179,6 +180,8 @@ export interface MetaAdSlideInput {
   slidePrompt: string;
   slideIndex: number;
   totalSlides: number;
+  /** App-rendered copy (the model renders no text). */
+  textOverlay: { layout: TextLayout } | null;
 }
 
 /** Validates one Meta Ads card: pasted shared context + slide prompt + position. */
@@ -208,7 +211,9 @@ export function validateMetaAdInput(input: unknown): MetaAdSlideInput {
   ) {
     throw new ValidationError("invalid_prompt", "Nomor slide tidak valid.");
   }
-  return { sharedContext, slidePrompt, slideIndex, totalSlides };
+  const overlay = data.textOverlay as { layout?: unknown } | null | undefined;
+  const textOverlay = overlay && isTextLayout(overlay.layout) ? { layout: overlay.layout } : null;
+  return { sharedContext, slidePrompt, slideIndex, totalSlides, textOverlay };
 }
 
 /** Parses the optional `metaAd` form field (JSON). */

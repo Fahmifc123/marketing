@@ -1,6 +1,7 @@
 /** Browser-side image helpers. */
 import { REFERENCE_IMAGE } from "@/lib/image-settings";
 import { logoZone, type LogoCorner } from "@/lib/logo-placement";
+import { drawCardText, type TextOverlay } from "@/lib/text-render";
 
 export function base64ToBlob(b64: string, mimeType: string): Blob {
   const binary = atob(b64);
@@ -126,25 +127,16 @@ function regionLuminance(ctx: CanvasRenderingContext2D, x: number, y: number, w:
 }
 
 /**
- * Composites the official logo file into the reserved corner zone — the logo
- * pixels are never altered, only scaled to fit. On a dark background the
- * light version is used when one is saved.
+ * Draws the official logo file into the reserved corner zone — the logo pixels
+ * are never altered, only scaled to fit. On a dark background the light
+ * version is used when one is saved.
  */
-export async function compositeLogo(image: Blob, logo: ActiveLogo): Promise<Blob> {
-  const base = await createImageBitmap(image);
-  const canvas = document.createElement("canvas");
-  canvas.width = base.width;
-  canvas.height = base.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(base, 0, 0);
-  base.close();
-
-  const zone = logoZone(logo.corner, canvas.width, canvas.height);
-  const zx = zone.x * canvas.width;
-  const zy = zone.y * canvas.height;
-  const zw = zone.width * canvas.width;
-  const zh = zone.height * canvas.height;
+async function drawLogo(ctx: CanvasRenderingContext2D, width: number, height: number, logo: ActiveLogo) {
+  const zone = logoZone(logo.corner, width, height);
+  const zx = zone.x * width;
+  const zy = zone.y * height;
+  const zw = zone.width * width;
+  const zh = zone.height * height;
 
   const dark = regionLuminance(ctx, zx, zy, zw, zh) < 110;
   const mark = await createImageBitmap(dark && logo.onDark ? logo.onDark : logo.primary);
@@ -157,17 +149,60 @@ export async function compositeLogo(image: Blob, logo: ActiveLogo): Promise<Blob
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(mark, x, y, w, h);
   mark.close();
+}
+
+/**
+ * Builds the final creative from the raw model output: app-rendered copy
+ * first, then the official logo on top.
+ */
+export async function composeCreative(
+  image: Blob,
+  options: {
+    logo?: ActiveLogo | null;
+    text?: TextOverlay | null;
+    /**
+     * Final delivery size. The image is cover-cropped to it first, so copy and
+     * logo are laid out on the exact final frame and can never be cropped off
+     * (even if the API returned a fallback size with another ratio).
+     */
+    size?: { width: number; height: number };
+  },
+): Promise<Blob> {
+  const base = await createImageBitmap(image);
+  const width = options.size?.width ?? base.width;
+  const height = options.size?.height ?? base.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("Canvas unavailable");
+  const scale = Math.max(width / base.width, height / base.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(base, (width - base.width * scale) / 2, (height - base.height * scale) / 2, base.width * scale, base.height * scale);
+  base.close();
+
+  if (options.text) await drawCardText(ctx, canvas.width, canvas.height, options.text, options.logo?.corner ?? null);
+  if (options.logo) await drawLogo(ctx, canvas.width, canvas.height, options.logo);
 
   const out = await canvasToBlob(canvas, "image/png");
   if (!out) throw new Error("Could not encode image");
   return out;
 }
 
-/** Applies the official logo when auto-logo is on; never fails the generation. */
-export async function finalizeImage(raw: Blob, logo: ActiveLogo | null): Promise<{ blob: Blob; logoApplied: boolean }> {
-  if (!logo) return { blob: raw, logoApplied: false };
+export function compositeLogo(image: Blob, logo: ActiveLogo): Promise<Blob> {
+  return composeCreative(image, { logo });
+}
+
+/** Applies app-rendered copy and/or the official logo; never fails the generation. */
+export async function finalizeImage(
+  raw: Blob,
+  logo: ActiveLogo | null,
+  text: TextOverlay | null = null,
+  size?: { width: number; height: number },
+): Promise<{ blob: Blob; logoApplied: boolean }> {
+  if (!logo && !text && !size) return { blob: raw, logoApplied: false };
   try {
-    return { blob: await compositeLogo(raw, logo), logoApplied: true };
+    return { blob: await composeCreative(raw, { logo, text, size }), logoApplied: Boolean(logo) };
   } catch {
     return { blob: raw, logoApplied: false };
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import type { ReferenceImage } from "@/components/ReferenceUploader";
 import {
@@ -17,6 +17,14 @@ import {
 import { buildChatGptInstructions } from "@/lib/chatgpt-instructions";
 import { META_AD_SIZES, META_ADS_LIMITS, parsePastedPrompt, type MetaAdSize, type MetaSizeId } from "@/lib/meta-ads";
 import { runPool } from "@/lib/pool";
+import {
+  CARD_TEXT_LIMITS,
+  EMPTY_CARD_TEXT,
+  TEXT_LAYOUTS,
+  extractCardText,
+  type CardText,
+  type TextLayout,
+} from "@/lib/text-layout";
 import { createZip } from "@/lib/zip";
 import type { SlideJobStatus } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
@@ -37,7 +45,10 @@ interface Props {
 
 interface Job {
   status: SlideJobStatus;
+  /** Final creative (copy + logo applied). */
   blob?: Blob;
+  /** Raw model output — kept so copy can be re-typeset without regenerating. */
+  raw?: Blob;
   url?: string;
   error?: string;
 }
@@ -45,6 +56,53 @@ interface Job {
 interface Draft {
   shared: string;
   slides: string[];
+  /** App-rendered copy per card (used when text overlay is on). */
+  texts: CardText[];
+}
+
+interface Approved {
+  draft: Draft;
+  sizes: MetaAdSize[];
+  /** Text layout when copy is rendered by the app, null when the model writes text. */
+  overlay: TextLayout | null;
+}
+
+function CardTextFields({
+  value,
+  onChange,
+  idPrefix,
+  disabled,
+}: {
+  value: CardText;
+  onChange: (next: CardText) => void;
+  idPrefix: string;
+  disabled?: boolean;
+}) {
+  const fields: Array<[keyof CardText, string, string]> = [
+    ["headline", "Headline", "Teks besar utama"],
+    ["supporting", "Teks pendukung", "(opsional)"],
+    ["cta", "Tombol CTA", "(opsional, mis. Daftar Sekarang)"],
+  ];
+  return (
+    <div className="grid gap-2 sm:grid-cols-[1.4fr_1.4fr_1fr]">
+      {fields.map(([field, label, placeholder]) => (
+        <div key={field}>
+          <label htmlFor={`${idPrefix}-${field}`} className="mb-1 block text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+            {label}
+          </label>
+          <input
+            id={`${idPrefix}-${field}`}
+            value={value[field]}
+            maxLength={CARD_TEXT_LIMITS[field]}
+            onChange={(e) => onChange({ ...value, [field]: e.target.value })}
+            placeholder={placeholder}
+            disabled={disabled}
+            className={`field py-2 text-sm ${field === "headline" ? "font-semibold" : ""}`}
+          />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type Result = { ok: true; blob: Blob } | { ok: false; code: string; message: string };
@@ -66,7 +124,15 @@ Slide 3: Solusi — karyawan memakai AI tools di laptop dengan ekspresi lega, he
 Slide 4: CTA — layout bersih dengan tombol oranye "DAFTAR BOOTCAMP AI TOOLS".`;
 
 /** Step 0: copy-ready instructions so ChatGPT answers in the format this tab parses. */
-function ChatGptHelper({ sizes, activeLogo }: { sizes: MetaAdSize[]; activeLogo: ActiveLogo | null }) {
+function ChatGptHelper({
+  sizes,
+  activeLogo,
+  textOverlay,
+}: {
+  sizes: MetaAdSize[];
+  activeLogo: ActiveLogo | null;
+  textOverlay: boolean;
+}) {
   const id = useId();
   const [topic, setTopic] = useState("");
   const [count, setCount] = useState(5);
@@ -76,6 +142,7 @@ function ChatGptHelper({ sizes, activeLogo }: { sizes: MetaAdSize[]; activeLogo:
     slideCount: count,
     sizes,
     logoCorner: activeLogo?.corner ?? null,
+    textOverlay,
   });
 
   return (
@@ -212,11 +279,15 @@ export default function MetaAdsGenerator({
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MetaSizeId[]>(META_AD_SIZES.map((s) => s.id));
   const [useAnchor, setUseAnchor] = useState(true);
+  const [overlayOn, setOverlayOn] = useState(true);
+  const [textLayout, setTextLayout] = useState<TextLayout>("bottom");
+  const [editingSlide, setEditingSlide] = useState<number | null>(null);
+  const [editText, setEditText] = useState<CardText>(EMPTY_CARD_TEXT);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [view, setView] = useState<"review" | "results">("review");
-  const [approved, setApproved] = useState<{ draft: Draft; sizes: MetaAdSize[] } | null>(null);
+  const [approved, setApproved] = useState<Approved | null>(null);
   const [jobs, setJobs] = useState<Record<string, Job>>({});
   const [running, setRunning] = useState(false);
   const [notices, setNotices] = useState<string[]>([]);
@@ -265,7 +336,7 @@ export default function MetaAdsGenerator({
     }
     if (draft && !window.confirm("Pisahkan ulang? Editan di review akan diganti dengan hasil tempelan terbaru.")) return;
     setPasteError(null);
-    setDraft(parsed);
+    setDraft({ ...parsed, texts: parsed.slides.map(extractCardText) });
     setView("review");
     setError(null);
   }
@@ -292,6 +363,7 @@ export default function MetaAdsGenerator({
         hasSizeMaster: size.id !== master?.id,
         hasReference: Boolean(reference),
         logoCorner: activeLogo?.corner ?? null,
+        textOverlay: overlayOn ? { layout: textLayout } : null,
       }),
     });
     const data = await res.json();
@@ -313,6 +385,7 @@ export default function MetaAdsGenerator({
 
   async function generateCard(
     target: Draft,
+    overlay: TextLayout | null,
     slide: number,
     size: MetaAdSize,
     refs: { styleAnchor?: File | null; sizeMaster?: File | null },
@@ -335,6 +408,7 @@ export default function MetaAdsGenerator({
         slidePrompt: target.slides[slide - 1],
         slideIndex: slide,
         totalSlides: target.slides.length,
+        textOverlay: overlay ? { layout: overlay } : null,
       }),
     );
     if (refs.sizeMaster) form.set("sizeMaster", refs.sizeMaster, refs.sizeMaster.name);
@@ -360,8 +434,10 @@ export default function MetaAdsGenerator({
 
       // Raw image (no logo) is returned for use as a reference; the display copy gets the official logo.
       const raw = base64ToBlob(data.image.b64, data.image.mimeType);
-      const { blob } = await finalizeImage(raw, activeLogo);
-      setJob(id, { status: "done", blob, url: URL.createObjectURL(blob) });
+      const text = overlay ? { text: target.texts[slide - 1] ?? EMPTY_CARD_TEXT, layout: overlay } : null;
+      // Composed on the exact Meta size, so copy and logo are never cropped.
+      const { blob } = await finalizeImage(raw, activeLogo, text, size.exportSize);
+      setJob(id, { status: "done", blob, raw, url: URL.createObjectURL(blob) });
       try {
         const { meta } = data;
         await onSaveToHistory({
@@ -402,7 +478,12 @@ export default function MetaAdsGenerator({
 
   async function generateAll() {
     if (!draft || running || tooMany || emptySlide || sizes.length === 0 || !validateKey()) return;
-    const target: Draft = { shared: draft.shared.trim(), slides: draft.slides.map((s) => s.trim()) };
+    const target: Draft = {
+      shared: draft.shared.trim(),
+      slides: draft.slides.map((s) => s.trim()),
+      texts: draft.slides.map((_, i) => draft.texts[i] ?? EMPTY_CARD_TEXT),
+    };
+    const overlay = overlayOn ? textLayout : null;
     const chosen = sizes;
     const [master, ...others] = chosen;
     const controller = new AbortController();
@@ -415,7 +496,8 @@ export default function MetaAdsGenerator({
     const initial: Record<string, Job> = {};
     target.slides.forEach((_, i) => chosen.forEach((s) => (initial[key(i + 1, s.id)] = { status: "queued" })));
     setJobs(initial);
-    setApproved({ draft: target, sizes: chosen });
+    setApproved({ draft: target, sizes: chosen, overlay });
+    setEditingSlide(null);
     setView("results");
     setRunning(true);
     setNotices([]);
@@ -433,7 +515,7 @@ export default function MetaAdsGenerator({
     const slideNumbers = target.slides.map((_, i) => i + 1);
 
     // 1. Card 1 in the master size — the style anchor for the whole carousel.
-    const first = await generateCard(target, 1, master, {}, controller.signal);
+    const first = await generateCard(target, overlay, 1, master, {}, controller.signal);
     check(first);
     if (first.ok) await rememberMaster(1, first.blob);
     const anchor = useAnchor ? (mastersRef.current.get(1) ?? null) : null;
@@ -444,7 +526,7 @@ export default function MetaAdsGenerator({
         slideNumbers.slice(1),
         META_ADS_LIMITS.concurrency,
         async (slide) => {
-          const r = await generateCard(target, slide, master, { styleAnchor: anchor }, controller.signal);
+          const r = await generateCard(target, overlay, slide, master, { styleAnchor: anchor }, controller.signal);
           check(r);
           if (r.ok) await rememberMaster(slide, r.blob);
         },
@@ -463,6 +545,7 @@ export default function MetaAdsGenerator({
           check(
             await generateCard(
               target,
+              overlay,
               slide,
               size,
               sizeMaster ? { sizeMaster } : { styleAnchor: slide > 1 ? anchor : null },
@@ -490,12 +573,28 @@ export default function MetaAdsGenerator({
     const controller = new AbortController();
     if (size.id === master.id) {
       const anchor = useAnchor && slide > 1 ? (mastersRef.current.get(1) ?? null) : null;
-      const r = await generateCard(approved.draft, slide, size, { styleAnchor: anchor }, controller.signal);
+      const r = await generateCard(approved.draft, approved.overlay, slide, size, { styleAnchor: anchor }, controller.signal);
       if (r.ok) await rememberMaster(slide, r.blob);
     } else {
       const sizeMaster = mastersRef.current.get(slide) ?? null;
-      await generateCard(approved.draft, slide, size, { sizeMaster }, controller.signal);
+      await generateCard(approved.draft, approved.overlay, slide, size, { sizeMaster }, controller.signal);
     }
+  }
+
+  /** Re-typesets one card in every size from the raw images — no new API calls. */
+  async function applyTextEdit(slide: number, text: CardText) {
+    if (!approved?.overlay) return;
+    const layout = approved.overlay;
+    const texts = approved.draft.texts.map((t, i) => (i === slide - 1 ? text : t));
+    setApproved({ ...approved, draft: { ...approved.draft, texts } });
+    for (const size of approved.sizes) {
+      const id = key(slide, size.id);
+      const job = jobs[id];
+      if (job?.status !== "done" || !job.raw) continue;
+      const { blob } = await finalizeImage(job.raw, activeLogo, { text, layout }, size.exportSize);
+      setJob(id, { ...job, blob, url: URL.createObjectURL(blob) });
+    }
+    setEditingSlide(null);
   }
 
   const fileName = (slide: number, size: MetaAdSize) =>
@@ -591,7 +690,7 @@ export default function MetaAdsGenerator({
           )}
         </fieldset>
 
-        <ChatGptHelper sizes={sizes} activeLogo={activeLogo} />
+        <ChatGptHelper sizes={sizes} activeLogo={activeLogo} textOverlay={overlayOn} />
 
         <div>
           <label htmlFor={pasteId} className="label">
@@ -627,6 +726,42 @@ export default function MetaAdsGenerator({
             Isi contoh
           </button>
         </div>
+
+        <fieldset className="rounded-xl border border-line bg-canvas p-4">
+          <legend className="sr-only">Teks iklan</legend>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-navy">
+              <input
+                type="checkbox"
+                checked={overlayOn}
+                onChange={(e) => setOverlayOn(e.target.checked)}
+                disabled={running}
+                className="h-4 w-4 accent-navy"
+              />
+              Teks dipasang aplikasi
+            </label>
+            {overlayOn && (
+              <select
+                aria-label="Posisi teks"
+                value={textLayout}
+                onChange={(e) => setTextLayout(e.target.value as TextLayout)}
+                disabled={running}
+                className="select w-auto py-1.5 text-xs"
+              >
+                {TEXT_LAYOUTS.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            {overlayOn
+              ? "AI hanya membuat visual. Headline, teks pendukung & tombol CTA dipasang aplikasi dengan font brand — ejaan 100% benar dan bisa diedit tanpa generate ulang."
+              : "AI menulis teks langsung di gambar (bisa salah ketik)."}
+          </p>
+        </fieldset>
 
         <label className="flex items-start gap-2 text-sm text-navy">
           <input
@@ -707,7 +842,13 @@ export default function MetaAdsGenerator({
                       </p>
                       <button
                         type="button"
-                        onClick={() => setDraft({ ...draft, slides: draft.slides.filter((_, j) => j !== i) })}
+                        onClick={() =>
+                          setDraft({
+                            ...draft,
+                            slides: draft.slides.filter((_, j) => j !== i),
+                            texts: draft.texts.filter((_, j) => j !== i),
+                          })
+                        }
                         disabled={draft.slides.length <= 1}
                         className="text-xs font-semibold text-muted hover:text-danger disabled:opacity-40"
                         aria-label={`Hapus slide ${i + 1}`}
@@ -725,9 +866,23 @@ export default function MetaAdsGenerator({
                     {text.trim().length < META_ADS_LIMITS.minSlideLength && (
                       <p className="mt-1 text-xs text-danger">Prompt slide masih kosong.</p>
                     )}
+                    {overlayOn && (
+                      <div className="mt-3 rounded-lg bg-pale/60 p-3">
+                        <p className="mb-2 text-[11px] font-semibold tracking-[0.08em] text-navy uppercase">
+                          Teks di gambar <span className="font-normal tracking-normal text-muted normal-case">— diambil dari tanda kutip, bisa diedit</span>
+                        </p>
+                        <CardTextFields
+                          idPrefix={`${pasteId}-t${i}`}
+                          value={draft.texts[i] ?? EMPTY_CARD_TEXT}
+                          onChange={(next) =>
+                            setDraft({ ...draft, texts: draft.slides.map((_, j) => (j === i ? next : (draft.texts[j] ?? EMPTY_CARD_TEXT))) })
+                          }
+                        />
+                      </div>
+                    )}
                     {devMode && sizes[0] && (
                       <div className="mt-3 border-t border-line pt-3">
-                        <PromptPreview key={`${text}|${sizes[0].id}`} load={() => loadPrompt(i + 1, sizes[0])} />
+                        <PromptPreview key={`${text}|${sizes[0].id}|${overlayOn}|${textLayout}`} load={() => loadPrompt(i + 1, sizes[0])} />
                       </div>
                     )}
                   </li>
@@ -736,7 +891,7 @@ export default function MetaAdsGenerator({
 
               <button
                 type="button"
-                onClick={() => setDraft({ ...draft, slides: [...draft.slides, ""] })}
+                onClick={() => setDraft({ ...draft, slides: [...draft.slides, ""], texts: [...draft.texts, EMPTY_CARD_TEXT] })}
                 disabled={draft.slides.length >= META_ADS_LIMITS.maxSlides}
                 className="btn-secondary w-full"
               >
@@ -845,66 +1000,105 @@ export default function MetaAdsGenerator({
                     {approved.draft.slides.map((text, i) => {
                       const slide = i + 1;
                       return (
-                        <tr key={slide}>
-                          <th scope="row" className="pb-4 align-top text-sm font-semibold text-navy" title={text}>
-                            {slide}
-                          </th>
-                          {approved.sizes.map((size) => {
-                            const job = jobs[key(slide, size.id)] ?? { status: "queued" };
-                            return (
-                              <td key={size.id} className="min-w-[120px] pb-4 align-top">
-                                <div
-                                  className="relative flex items-center justify-center overflow-hidden rounded-lg border border-line bg-canvas"
-                                  style={{ aspectRatio: `${size.exportSize.width} / ${size.exportSize.height}` }}
+                        <Fragment key={slide}>
+                          <tr>
+                            <th scope="row" className="pb-4 align-top text-sm font-semibold text-navy" title={text}>
+                              {slide}
+                              {approved.overlay && !running && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingSlide(editingSlide === slide ? null : slide);
+                                    setEditText(approved.draft.texts[i] ?? EMPTY_CARD_TEXT);
+                                  }}
+                                  aria-expanded={editingSlide === slide}
+                                  className="mt-1 block text-[11px] font-semibold text-navy-600 hover:text-navy"
                                 >
-                                  {job.status === "done" && job.url ? (
+                                  Edit teks
+                                </button>
+                              )}
+                            </th>
+                            {approved.sizes.map((size) => {
+                              const job = jobs[key(slide, size.id)] ?? { status: "queued" };
+                              return (
+                                <td key={size.id} className="min-w-[120px] pb-4 align-top">
+                                  <div
+                                    className="relative flex items-center justify-center overflow-hidden rounded-lg border border-line bg-canvas"
+                                    style={{ aspectRatio: `${size.exportSize.width} / ${size.exportSize.height}` }}
+                                  >
+                                    {job.status === "done" && job.url ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => openViewer(slide, size)}
+                                        className="h-full w-full cursor-zoom-in"
+                                        aria-label={`Buka slide ${slide} ${size.ratio}`}
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+                                        <img src={job.url} alt={`Slide ${slide}, ${size.ratio}`} className="h-full w-full object-cover" />
+                                      </button>
+                                    ) : job.status === "generating" ? (
+                                      <>
+                                        <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
+                                          <div className="animate-shimmer absolute inset-y-0 -left-1/2 w-[200%] bg-gradient-to-r from-transparent via-white to-transparent" />
+                                        </div>
+                                        <p className="relative text-[10px] font-semibold tracking-[0.12em] text-navy uppercase">Generating…</p>
+                                      </>
+                                    ) : job.status === "error" ? (
+                                      <div className="px-2 text-center">
+                                        <p className="text-[11px] leading-snug text-danger">{job.error}</p>
+                                        {!running && (
+                                          <button
+                                            type="button"
+                                            onClick={() => void retryCard(slide, size)}
+                                            className="btn-secondary mt-2 px-2.5 py-1 text-[11px]"
+                                          >
+                                            Retry
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <p className="text-[11px] text-muted">Menunggu…</p>
+                                    )}
+                                  </div>
+                                  {job.status === "done" && !running && (
+                                    <div className="mt-1 flex gap-2 text-[11px] font-semibold">
+                                      <button type="button" onClick={() => void downloadCard(slide, size)} className="text-navy-600 hover:text-navy">
+                                        Download
+                                      </button>
+                                      <button type="button" onClick={() => void retryCard(slide, size)} className="text-navy-600 hover:text-navy">
+                                        Regenerate
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                          {editingSlide === slide && approved.overlay && (
+                            <tr>
+                              <td colSpan={approved.sizes.length + 1} className="pb-4">
+                                <div className="rounded-xl border border-navy-300/60 bg-pale/50 p-4">
+                                  <p className="mb-2 text-xs font-semibold text-navy">
+                                    Edit teks slide {slide} — diterapkan ke semua ukuran, tanpa generate ulang
+                                  </p>
+                                  <CardTextFields idPrefix={`${pasteId}-edit${slide}`} value={editText} onChange={setEditText} />
+                                  <div className="mt-3 flex gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => openViewer(slide, size)}
-                                      className="h-full w-full cursor-zoom-in"
-                                      aria-label={`Buka slide ${slide} ${size.ratio}`}
+                                      onClick={() => void applyTextEdit(slide, editText)}
+                                      className="btn bg-navy text-white hover:bg-navy-700"
                                     >
-                                      {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
-                                      <img src={job.url} alt={`Slide ${slide}, ${size.ratio}`} className="h-full w-full object-cover" />
+                                      Terapkan
                                     </button>
-                                  ) : job.status === "generating" ? (
-                                    <>
-                                      <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
-                                        <div className="animate-shimmer absolute inset-y-0 -left-1/2 w-[200%] bg-gradient-to-r from-transparent via-white to-transparent" />
-                                      </div>
-                                      <p className="relative text-[10px] font-semibold tracking-[0.12em] text-navy uppercase">Generating…</p>
-                                    </>
-                                  ) : job.status === "error" ? (
-                                    <div className="px-2 text-center">
-                                      <p className="text-[11px] leading-snug text-danger">{job.error}</p>
-                                      {!running && (
-                                        <button
-                                          type="button"
-                                          onClick={() => void retryCard(slide, size)}
-                                          className="btn-secondary mt-2 px-2.5 py-1 text-[11px]"
-                                        >
-                                          Retry
-                                        </button>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <p className="text-[11px] text-muted">Menunggu…</p>
-                                  )}
-                                </div>
-                                {job.status === "done" && !running && (
-                                  <div className="mt-1 flex gap-2 text-[11px] font-semibold">
-                                    <button type="button" onClick={() => void downloadCard(slide, size)} className="text-navy-600 hover:text-navy">
-                                      Download
-                                    </button>
-                                    <button type="button" onClick={() => void retryCard(slide, size)} className="text-navy-600 hover:text-navy">
-                                      Regenerate
+                                    <button type="button" onClick={() => setEditingSlide(null)} className="btn-secondary">
+                                      Batal
                                     </button>
                                   </div>
-                                )}
+                                </div>
                               </td>
-                            );
-                          })}
-                        </tr>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>

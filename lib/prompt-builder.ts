@@ -36,6 +36,7 @@ import {
   REFERENCE_IMAGE_RULES,
 } from "@/lib/intelligo-style";
 import { describeLogoZone, type LogoCorner } from "@/lib/logo-placement";
+import { describeTextZone, stripQuotedCopy, type TextLayout } from "@/lib/text-layout";
 import type { CarouselPlan } from "@/types/carousel";
 import type { CampaignContext, ContentType, FunnelStage } from "@/types/generation";
 import type { QualityId, ResolvedFormat } from "@/types/image";
@@ -450,6 +451,8 @@ export interface BuildMetaAdPromptInput {
   hasSizeMaster: boolean;
   hasReference: boolean;
   logoCorner?: LogoCorner | null;
+  /** App-rendered copy: the model renders no text and keeps this zone calm. */
+  textOverlay?: { layout: TextLayout } | null;
 }
 
 const PLACEMENT_GUIDANCE: Record<string, string[]> = {
@@ -473,6 +476,10 @@ const PLACEMENT_GUIDANCE: Record<string, string[]> = {
  */
 export function buildMetaAdSlidePrompt(input: BuildMetaAdPromptInput): string {
   const format = input.aspectRatio;
+  const overlay = input.textOverlay ?? null;
+  // With app-rendered copy, quoted text is removed so the model is not tempted to draw it.
+  const sharedContext = overlay ? stripQuotedCopy(input.sharedContext) : input.sharedContext;
+  const slidePrompt = overlay ? stripQuotedCopy(input.slidePrompt) : input.slidePrompt;
   const combined = `${input.sharedContext}\n${input.slidePrompt}`;
   const brief = analyzeBrief(combined);
   const { palette } = INTELLIGO_BRAND_SYSTEM;
@@ -485,18 +492,18 @@ export function buildMetaAdSlidePrompt(input: BuildMetaAdPromptInput): string {
       : `Create a Meta Ads creative for ${INTELLIGO_BRAND_SYSTEM.name}, an Indonesian education and career-skills company.`,
   );
 
-  if (input.sharedContext.trim()) {
+  if (sharedContext.trim()) {
     parts.push(
       section(
         "Campaign direction from the marketing team (applies to every card)",
-        `"""\n${input.sharedContext.trim()}\n"""`,
+        `"""\n${sharedContext.trim()}\n"""`,
       ),
     );
   }
   parts.push(
     section(
       isCarousel ? `Creative prompt for card ${input.slideIndex} (primary direction — follow it faithfully)` : "Creative prompt (primary direction — follow it faithfully)",
-      `"""\n${input.slidePrompt.trim()}\n"""`,
+      `"""\n${slidePrompt.trim()}\n"""`,
     ),
   );
   parts.push(
@@ -529,14 +536,23 @@ export function buildMetaAdSlidePrompt(input: BuildMetaAdPromptInput): string {
   ];
   parts.push(section("Format & Meta placement", bullet(formatLines)));
 
-  const textLines = [...INTELLIGO_TEXT_RULES.base];
-  if (brief.exactText.length > 0) {
+  const { width: genW, height: genH } = format.generationSize;
+  const textLines: string[] = overlay
+    ? [
+        "Render NO text at all: no letters, words, numbers, headlines, labels, buttons, UI text, signage or watermarks. The headline, supporting text and call-to-action are typeset by the app afterwards.",
+        `Keep a calm, low-detail text zone with an even tone — ${describeTextZone(overlay.layout, genW, genH, input.logoCorner ?? null)}. No faces, hands or key subjects there; place the focal subject in the rest of the frame.`,
+        "Any screens, documents or devices in the image must show abstract shapes only, never readable text.",
+      ]
+    : [...INTELLIGO_TEXT_RULES.base];
+  if (!overlay && brief.exactText.length > 0) {
     textLines.push(INTELLIGO_TEXT_RULES.exactTextIntro, ...brief.exactText.map((t) => `  • "${t}"`));
   }
   textLines.push(
-    brief.urls.length > 0
-      ? `Only use these URLs, exactly as written: ${brief.urls.map((u) => `"${u}"`).join(", ")}.`
-      : "Do not show any URL, website address or social handle.",
+    overlay
+      ? "Do not show any URL, website address or social handle."
+      : brief.urls.length > 0
+        ? `Only use these URLs, exactly as written: ${brief.urls.map((u) => `"${u}"`).join(", ")}.`
+        : "Do not show any URL, website address or social handle.",
   );
   textLines.push(
     brief.wantsQrCode

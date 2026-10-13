@@ -57,6 +57,23 @@ The image model never draws the logo.
    version is saved, the white version is used.
 4. Style anchors and size masters stay logo-free, so the model never copies the logo into other images.
 
+### App-rendered copy (Meta Ads)
+
+With **Teks dipasang aplikasi** on (the default):
+1. The image model renders **no text**. Quoted copy is stripped from its prompt, and it keeps a calm text zone at the
+   top or bottom (`lib/text-layout.ts`). That zone avoids the logo and the Stories/Reels interface areas.
+2. Headline, supporting text and CTA are read from the pasted prompt:
+   - Labeled quotes like `Headline "…"`, `Teks pendukung "…"`, `Tombol "…"` are used first.
+   - Unlabeled quotes fill the headline, then the supporting text.
+   - Each card's copy can be edited in the review step.
+3. The browser typesets the copy (`lib/text-render.ts`):
+   - Inter font, with an orange CTA button.
+   - Navy or white text, chosen from the background.
+   - A soft navy gradient behind the text on busy backgrounds.
+   - Text auto-shrinks to fit the zone.
+4. Copy and logo are composed on the exact final frame (1080×1350 / 1080×1080 / 1080×1920), so they are never cropped.
+5. **Edit teks** in the results re-typesets that card in every size from the raw images. No new API calls are made.
+
 ### ChatGPT instructions
 
 **Belum punya prompt? Minta ke ChatGPT dulu** (Meta Ads tab) copies ready-made instructions for ChatGPT

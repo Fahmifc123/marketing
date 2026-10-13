@@ -13,6 +13,8 @@ export interface ChatGptInstructionOptions {
   sizes: MetaAdSize[];
   /** Corner where the official logo will be composited, or null when auto-logo is off. */
   logoCorner: LogoCorner | null;
+  /** True when headline/supporting/CTA are typeset by the app (labels must be explicit). */
+  textOverlay?: boolean;
 }
 
 const FLOW: Record<number, string> = {
@@ -30,7 +32,13 @@ function flowFor(n: number) {
   return FLOW[n] ?? `${FLOW[8]} (tambahkan kartu benefit/bukti di tengah sampai ${n} kartu)`;
 }
 
-export function buildChatGptInstructions({ topic, slideCount, sizes, logoCorner }: ChatGptInstructionOptions): string {
+export function buildChatGptInstructions({
+  topic,
+  slideCount,
+  sizes,
+  logoCorner,
+  textOverlay = false,
+}: ChatGptInstructionOptions): string {
   const n = Math.max(1, Math.min(10, Math.round(slideCount)));
   const brief = topic.trim() || "[TULIS TOPIK / BRIEF CAMPAIGN DI SINI — program, target audiens, offer (kalau ada)]";
   const sizeList = sizes.length
@@ -38,11 +46,13 @@ export function buildChatGptInstructions({ topic, slideCount, sizes, logoCorner 
     : "1080×1350 (4:5), 1080×1080 (1:1), 1080×1920 (9:16)";
   const cornerLabel = logoCorner ? LOGO_CORNERS.find((c) => c.id === logoCorner)?.label.toLowerCase() : null;
 
-  const slideLines = Array.from({ length: n }, (_, i) =>
-    i === 0
-      ? `Slide 1: <peran kartu> — <konsep visual & komposisi>. Headline "<teks>". Teks pendukung "<teks>" (opsional).`
-      : `Slide ${i + 1}: ...`,
-  ).join("\n");
+  const firstSlide = textOverlay
+    ? `Slide 1: <peran kartu> — <konsep visual & komposisi, TANPA teks di dalam gambar>. Headline "<teks>". Teks pendukung "<teks>" (opsional). Tombol "<teks>" (hanya kalau kartu ini punya CTA).`
+    : `Slide 1: <peran kartu> — <konsep visual & komposisi>. Headline "<teks>". Teks pendukung "<teks>" (opsional).`;
+  const slideLines = Array.from({ length: n }, (_, i) => (i === 0 ? firstSlide : `Slide ${i + 1}: ...`)).join("\n");
+  const textRule = textOverlay
+    ? `- Teks iklan dipasang otomatis oleh aplikasi (font & warna brand), BUKAN digambar AI. Untuk setiap kartu tulis dengan label persis: Headline "...", Teks pendukung "..." (opsional), Tombol "..." (hanya kartu CTA). Headline maksimal ±8 kata, teks pendukung maksimal 1 kalimat pendek, tombol 1–3 kata. Konsep visual jangan memuat teks lain.`
+    : `- Teks yang harus tampil di gambar tulis dalam tanda kutip "seperti ini". Headline maksimal ±8 kata, teks pendukung maksimal 1 kalimat pendek. Sedikit teks lebih baik untuk iklan.`;
 
   return `Kamu adalah creative strategist untuk Intelligo ID — perusahaan edukasi & skill karier di Indonesia (Bootcamp, Private Course, Internship, Job Ready, Workshop; topik seperti Data Science, Data Analytics, AI, Machine Learning, Python, SQL, Data Visualization, AI Automation).
 
@@ -57,7 +67,7 @@ ATURAN
 - JANGAN mengarang harga, tanggal, jadwal, diskon, persentase, statistik, testimoni, jumlah alumni, nama mentor/partner, atau janji "pasti dapat kerja". Pakai hanya detail yang saya berikan di brief.
 - JANGAN menulis URL, akun sosmed, atau QR code kecuali ada di brief.
 - ${cornerLabel ? `Jangan minta logo digambar — logo resmi ditempel otomatis di pojok ${cornerLabel}, jadi biarkan pojok itu kosong.` : "Jangan minta logo Intelligo digambar — sisakan pojok kosong untuk logo yang ditempel manual."}
-- Teks yang harus tampil di gambar tulis dalam tanda kutip "seperti ini". Headline maksimal ±8 kata, teks pendukung maksimal 1 kalimat pendek. Sedikit teks lebih baik untuk iklan.
+${textRule}
 - Visual: orang Indonesia/Asia Tenggara yang natural (mahasiswa, fresh graduate, profesional muda), suasana kerja/belajar modern, gaya editorial premium. Hindari robot, hologram, neon, efek glow, dan desain ramai.
 - Variasikan subjek antar kartu (jangan orang yang sama di setiap kartu), tapi gaya visual tetap satu seri.
 - Copy di gambar dalam Bahasa Indonesia; deskripsi visual boleh Indonesia atau Inggris.
