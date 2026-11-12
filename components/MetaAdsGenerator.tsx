@@ -27,6 +27,7 @@ import {
   type TextLayout,
 } from "@/lib/text-layout";
 import { createZip } from "@/lib/zip";
+import { recordGeneration } from "@/lib/cost-calibration";
 import type { SlideJobStatus } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
@@ -424,6 +425,7 @@ export default function MetaAdsGenerator({
       // Composed on the exact Meta size, so copy and logo are never cropped.
       const { blob } = await finalizeImage(raw, activeLogo, text, size.exportSize);
       setJob(id, { status: "done", blob, raw, url: URL.createObjectURL(blob) });
+      recordGeneration(data.meta.model, data.meta.quality, data.meta.size, data.meta.usage?.outputTokens);
       try {
         const { meta } = data;
         await onSaveToHistory({

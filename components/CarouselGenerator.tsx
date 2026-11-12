@@ -20,6 +20,7 @@ import {
 import { PROMPT_LIMITS, isValidCustomRatio, resolveFormat } from "@/lib/image-settings";
 import { runPool } from "@/lib/pool";
 import { createZip } from "@/lib/zip";
+import { recordGeneration } from "@/lib/cost-calibration";
 import type { CarouselPlan, CarouselPlanResponse } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
@@ -250,6 +251,7 @@ export default function CarouselGenerator({
       const { blob } = await finalizeImage(raw, activeLogo);
       setJob(index, { status: "done", blob, url: URL.createObjectURL(blob) });
 
+      recordGeneration(data.meta.model, data.meta.quality, data.meta.size, data.meta.usage?.outputTokens);
       try {
         const { meta } = data;
         await onSaveToHistory({

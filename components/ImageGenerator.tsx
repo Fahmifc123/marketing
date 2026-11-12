@@ -13,6 +13,7 @@ import LogoSettings, { useBrandLogo } from "@/components/LogoSettings";
 import ReferenceUploader, { type ReferenceImage } from "@/components/ReferenceUploader";
 import SpeakerPhotos, { type Speaker } from "@/components/SpeakerPhotos";
 import type { ContentMode } from "@/lib/speakers";
+import { recordGeneration } from "@/lib/cost-calibration";
 import { base64ToBlob, copyText, createThumbnail, downloadBlob, finalizeImage } from "@/lib/client-image";
 import { isStoryPrompt } from "@/lib/content-detection";
 import { addHistoryItem, deleteHistoryItem, listHistory } from "@/lib/history-store";
@@ -258,6 +259,7 @@ export default function ImageGenerator() {
       };
       showResult(item);
       setLastMeta(meta);
+      recordGeneration(meta.model, meta.quality, meta.size, meta.usage?.outputTokens);
       setStatus("success");
 
       try {

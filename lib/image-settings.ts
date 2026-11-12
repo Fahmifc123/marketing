@@ -37,7 +37,7 @@ export const IMAGE_MODELS: ImageModelOption[] = [
   {
     id: "gpt-image-2",
     label: "GPT-Image 2",
-    description: "Previous generation. Cheaper, still sharp.",
+    description: "Previous generation (deprecated by OpenAI). Cheaper portrait/landscape.",
     qualities: BASIC_QUALITIES,
     arbitrarySizes: true,
   },
@@ -45,13 +45,6 @@ export const IMAGE_MODELS: ImageModelOption[] = [
     id: "gpt-image-1.5",
     label: "GPT-Image 1.5",
     description: "Older model. Standard sizes only (upscaled to the export size).",
-    qualities: BASIC_QUALITIES,
-    arbitrarySizes: false,
-  },
-  {
-    id: "gpt-image-1",
-    label: "GPT-Image 1",
-    description: "Legacy model. Standard sizes only.",
     qualities: BASIC_QUALITIES,
     arbitrarySizes: false,
   },

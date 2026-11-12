@@ -1,33 +1,60 @@
 /**
- * Image generation cost (USD). OpenAI bills GPT image models per token:
- * text input + image input (reference images) + image output.
+ * Image generation cost (USD), from OpenAI's official docs
+ * (developers.openai.com/api/docs/pricing and guides/image-generation,
+ * checked 2026-11-12). Billing is per token: text input + image input
+ * (reference images) + image output. Rates are USD per 1M tokens.
  *
- * Rates are USD per 1M tokens. `verified: false` means OpenAI has not
- * published a price we could confirm — the number is an assumption and the
- * UI labels it as such. Update this table when OpenAI's pricing page changes.
+ * Output tokens per image are only published for the three standard sizes.
+ * Custom sizes are scaled by area from the nearest standard size — an upper
+ * estimate (OpenAI notes bigger non-square sizes can use FEWER tokens). The
+ * browser then calibrates from real usage (see cost-calibration.ts).
  */
 import type { Dimensions, QualityId } from "@/types/image";
+
+type Orientation = "square" | "portrait" | "landscape";
+type TokenTable = Partial<Record<QualityId, Record<Orientation, number>>>;
 
 export interface ModelRates {
   textIn: number;
   imageIn: number;
   imageOut: number;
-  verified: boolean;
-  /** Output tokens for one 1024x1024 image per quality (scaled by pixel area). */
-  outTokens1024: Partial<Record<QualityId, number>>;
+  /** Output tokens per standard-size image. */
+  outTokens: TokenTable;
+  /** False when OpenAI publishes no token counts for this model (we borrow another model's). */
+  tokensPublished: boolean;
 }
 
-const GPT1_TOKENS = { low: 272, medium: 1056, high: 4160 };
-const GPT2_TOKENS = { low: 200, medium: 1770, high: 7030, xhigh: 10500, max: 14000 };
+/** GPT-Image-2 per-image costs ($0.006/$0.053/$0.211 square, $0.005/$0.041/$0.165 portrait & landscape) ÷ $30/M. */
+const GPT2_TOKENS: TokenTable = {
+  low: { square: 200, portrait: 167, landscape: 167 },
+  medium: { square: 1767, portrait: 1367, landscape: 1367 },
+  high: { square: 7033, portrait: 5500, landscape: 5500 },
+};
+/** Not published for 2.5: borrow GPT-Image-2 and assume xhigh/max cost more. */
+const GPT25_TOKENS: TokenTable = {
+  ...GPT2_TOKENS,
+  xhigh: { square: 10550, portrait: 8250, landscape: 8250 },
+  max: { square: 14066, portrait: 11000, landscape: 11000 },
+};
+/** "Models prior to gpt-image-2" table. */
+const GPT1_TOKENS: TokenTable = {
+  low: { square: 272, portrait: 408, landscape: 400 },
+  medium: { square: 1056, portrait: 1584, landscape: 1568 },
+  high: { square: 4160, portrait: 6240, landscape: 6208 },
+};
 
 export const PRICING: Record<string, ModelRates> = {
-  // Price not published by OpenAI at time of writing — assumed equal to gpt-image-2.
-  "gpt-image-2.5-sunburst": { textIn: 5, imageIn: 8, imageOut: 30, verified: false, outTokens1024: GPT2_TOKENS },
-  "gpt-image-2.5-flare": { textIn: 5, imageIn: 8, imageOut: 30, verified: false, outTokens1024: GPT2_TOKENS },
-  "gpt-image-2": { textIn: 5, imageIn: 8, imageOut: 30, verified: true, outTokens1024: GPT2_TOKENS },
-  "gpt-image-1.5": { textIn: 5, imageIn: 8, imageOut: 32, verified: true, outTokens1024: GPT1_TOKENS },
-  "gpt-image-1": { textIn: 5, imageIn: 10, imageOut: 40, verified: true, outTokens1024: GPT1_TOKENS },
-  "gpt-image-1-mini": { textIn: 2, imageIn: 2.5, imageOut: 8, verified: true, outTokens1024: GPT1_TOKENS },
+  "gpt-image-2.5-sunburst": { textIn: 5, imageIn: 8, imageOut: 30, outTokens: GPT25_TOKENS, tokensPublished: false },
+  "gpt-image-2.5-flare": { textIn: 5, imageIn: 8, imageOut: 30, outTokens: GPT25_TOKENS, tokensPublished: false },
+  "gpt-image-2": { textIn: 5, imageIn: 8, imageOut: 30, outTokens: GPT2_TOKENS, tokensPublished: true },
+  "gpt-image-1.5": { textIn: 5, imageIn: 8, imageOut: 32, outTokens: GPT1_TOKENS, tokensPublished: true },
+  "gpt-image-1-mini": { textIn: 2, imageIn: 2.5, imageOut: 8, outTokens: GPT1_TOKENS, tokensPublished: true },
+};
+
+const STANDARD: Record<Orientation, Dimensions> = {
+  square: { width: 1024, height: 1024 },
+  portrait: { width: 1024, height: 1536 },
+  landscape: { width: 1536, height: 1024 },
 };
 
 /** Rough input-token cost of one attached reference image. */
@@ -40,6 +67,7 @@ export interface CostBreakdown {
   textInTokens: number;
   imageInTokens: number;
   outTokens: number;
+  /** Rates are OpenAI's published prices. */
   verified: boolean;
 }
 
@@ -47,8 +75,32 @@ function rates(modelId: string): ModelRates {
   return PRICING[modelId] ?? PRICING["gpt-image-2"];
 }
 
+function orientation(size: Dimensions): Orientation {
+  const r = size.width / size.height;
+  if (r > 1.15) return "landscape";
+  if (r < 0.87) return "portrait";
+  return "square";
+}
+
 function priceOf(r: ModelRates, textIn: number, imageIn: number, out: number) {
   return (textIn * r.textIn + imageIn * r.imageIn + out * r.imageOut) / 1_000_000;
+}
+
+/** Output tokens per pixel learned from real generations (model+quality+orientation key). */
+export type Calibration = Record<string, number>;
+
+export const calibrationKey = (model: string, quality: QualityId, size: Dimensions) => `${model}|${quality}|${orientation(size)}`;
+
+/** Estimated output tokens for one image (learned value first, else the published table). */
+export function estimateOutTokens(model: string, quality: QualityId, size: Dimensions, calibration?: Calibration): { tokens: number; calibrated: boolean } {
+  const pixels = size.width * size.height;
+  const learned = calibration?.[calibrationKey(model, quality, size)];
+  if (learned) return { tokens: Math.round(learned * pixels), calibrated: true };
+  const o = orientation(size);
+  const table = rates(model).outTokens;
+  const base = (table[quality] ?? table.high!)[o];
+  const std = STANDARD[o];
+  return { tokens: Math.round(base * (pixels / (std.width * std.height))), calibrated: false };
 }
 
 /** Estimate before generating. */
@@ -60,13 +112,13 @@ export function estimateImageCost(input: {
   referenceImages: number;
   /** promptChars already includes the brand system prompt. */
   fullPrompt?: boolean;
-}): CostBreakdown {
+  calibration?: Calibration;
+}): CostBreakdown & { calibrated: boolean } {
   const r = rates(input.model);
-  const base = r.outTokens1024[input.quality] ?? r.outTokens1024.high ?? 4160;
-  const outTokens = Math.round(base * ((input.size.width * input.size.height) / (1024 * 1024)));
+  const { tokens: outTokens, calibrated } = estimateOutTokens(input.model, input.quality, input.size, input.calibration);
   const textInTokens = Math.round(input.promptChars / 4) + (input.fullPrompt ? 0 : SYSTEM_PROMPT_TOKENS);
   const imageInTokens = input.referenceImages * REFERENCE_IMAGE_TOKENS;
-  return { usd: priceOf(r, textInTokens, imageInTokens, outTokens), textInTokens, imageInTokens, outTokens, verified: r.verified };
+  return { usd: priceOf(r, textInTokens, imageInTokens, outTokens), textInTokens, imageInTokens, outTokens, verified: true, calibrated };
 }
 
 /** Actual cost from the usage OpenAI returned. */
@@ -84,7 +136,7 @@ export function actualImageCost(
     textInTokens: textIn,
     imageInTokens: imageIn,
     outTokens: usage.outputTokens,
-    verified: r.verified,
+    verified: Boolean(PRICING[model]),
   };
 }
 

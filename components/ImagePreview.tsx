@@ -68,7 +68,7 @@ export default function ImagePreview({
                       ? "Estimasi — OpenAI tidak mengirim data pemakaian token."
                       : result.meta.cost.verified
                         ? "Dihitung dari token yang benar-benar dipakai × harga resmi OpenAI."
-                        : "Dihitung dari token asli; tarif model ini belum dipublikasikan OpenAI (diasumsikan = GPT-Image 2)."
+                        : "Dihitung dari token asli; tarif model ini tidak ada di halaman harga OpenAI."
                   }
                 >
                   Biaya {result.meta.cost.estimated || !result.meta.cost.verified ? "≈ " : ""}

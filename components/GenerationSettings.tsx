@@ -12,6 +12,7 @@ import {
   resolveFormat,
   sizeForModel,
 } from "@/lib/image-settings";
+import { useCalibration } from "@/lib/cost-calibration";
 import { PRICING, estimateImageCost, formatUsd } from "@/lib/pricing";
 import type { GenerationSettings as Settings } from "@/types/generation";
 import type { Dimensions, FormatId, QualityId } from "@/types/image";
@@ -54,22 +55,28 @@ export default function GenerationSettings({ settings, onSettingsChange, autoSto
     if (q !== settings.quality) onSettingsChange({ ...settings, quality: q });
   }, [settings, onSettingsChange]);
 
+  const calibration = useCalibration();
   const sizes = (estimate?.sizes?.length ? estimate.sizes : [resolved.generationSize]).map((s) => sizeForModel(settings.model, s));
-  const perClick = estimate
-    ? sizes.reduce(
-        (sum, size) =>
-          sum +
-          estimateImageCost({
-            model: settings.model,
-            quality: qualityForModel(settings.model, settings.quality),
-            size,
-            promptChars: estimate.promptChars,
-            referenceImages: estimate.referenceImages,
-          }).usd,
-        0,
-      ) * Math.max(1, estimate.images)
-    : null;
-  const verified = PRICING[settings.model]?.verified ?? false;
+  const parts = estimate
+    ? sizes.map((size) =>
+        estimateImageCost({
+          model: settings.model,
+          quality: qualityForModel(settings.model, settings.quality),
+          size,
+          promptChars: estimate.promptChars,
+          referenceImages: estimate.referenceImages,
+          calibration,
+        }),
+      )
+    : [];
+  const perClick = estimate ? parts.reduce((sum, p) => sum + p.usd, 0) * Math.max(1, estimate.images) : null;
+  const calibrated = parts.length > 0 && parts.every((p) => p.calibrated);
+  const tokensPublished = PRICING[settings.model]?.tokensPublished ?? false;
+  const basis = calibrated
+    ? "dikalibrasi dari pemakaian token asli generate sebelumnya"
+    : tokensPublished
+      ? "tarif & token resmi OpenAI untuk ukuran standar; ukuran besar dihitung proporsional (bisa lebih murah)"
+      : "tarif resmi OpenAI; jumlah token model ini belum dipublikasikan, memakai angka GPT-Image 2";
 
   return (
     <div className="space-y-5">
@@ -116,11 +123,11 @@ export default function GenerationSettings({ settings, onSettingsChange, autoSto
 
       {perClick !== null && (
         <p className="-mt-2 rounded-lg bg-pale/60 px-3 py-2 text-xs text-navy" aria-live="polite">
-          Estimasi biaya: <strong>{formatUsd(perClick)}</strong>
+          Estimasi biaya: <strong>{calibrated ? "" : "≈ "}{formatUsd(perClick)}</strong>
           {estimate && estimate.images * sizes.length > 1 ? ` untuk ${estimate.images * sizes.length} gambar` : " per gambar"}
           <span className="text-muted">
             {" "}
-            · {verified ? "tarif resmi OpenAI" : "tarif model ini belum dipublikasikan, diasumsikan = GPT-Image 2"} · biaya asli muncul setelah generate
+            · {basis} · biaya asli muncul setelah generate
           </span>
         </p>
       )}
