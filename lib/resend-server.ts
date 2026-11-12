@@ -12,6 +12,7 @@ import "server-only";
 import { Resend } from "resend";
 
 import { signValue, verifySignedValue } from "@/lib/auth";
+import type { EmailDesign } from "@/lib/email-assets";
 import {
   canonicalEmail,
   renderEmailHtml,
@@ -60,12 +61,12 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function contentHash(draft: EmailDraft, ctaUrl: string): Promise<string> {
-  return sha256(canonicalEmail(draft, ctaUrl));
+export async function contentHash(draft: EmailDraft, ctaUrl: string, design: EmailDesign): Promise<string> {
+  return sha256(canonicalEmail(draft, ctaUrl, design));
 }
 
 /** Sends the exact email to up to a few test addresses and returns a broadcast token for that content. */
-export async function sendTestEmail(draft: EmailDraft, ctaUrl: string, to: string[]): Promise<{ token: string }> {
+export async function sendTestEmail(draft: EmailDraft, ctaUrl: string, design: EmailDesign, to: string[]): Promise<{ token: string }> {
   const { resend, from, replyTo } = client();
   unwrap(
     await resend.emails.send({
@@ -73,17 +74,17 @@ export async function sendTestEmail(draft: EmailDraft, ctaUrl: string, to: strin
       to,
       replyTo,
       subject: `[TES] ${draft.subject}`,
-      html: renderEmailHtml(draft, { ctaUrl, mode: "test" }),
-      text: renderEmailText(draft, { ctaUrl, mode: "test" }),
+      html: renderEmailHtml(draft, { ctaUrl, mode: "test", design }),
+      text: renderEmailText(draft, { ctaUrl, mode: "test", design }),
     }),
   );
-  const hash = await contentHash(draft, ctaUrl);
+  const hash = await contentHash(draft, ctaUrl, design);
   return { token: await signValue(`email-test:${hash}`, TEST_TOKEN_TTL_MS) };
 }
 
-export async function verifyTestToken(token: unknown, draft: EmailDraft, ctaUrl: string): Promise<boolean> {
+export async function verifyTestToken(token: unknown, draft: EmailDraft, ctaUrl: string, design: EmailDesign): Promise<boolean> {
   if (typeof token !== "string") return false;
-  const hash = await contentHash(draft, ctaUrl);
+  const hash = await contentHash(draft, ctaUrl, design);
   return verifySignedValue(token, `email-test:${hash}`);
 }
 
@@ -123,6 +124,7 @@ export async function listSegments(): Promise<SegmentSummary[]> {
 export async function sendBroadcast(opts: {
   draft: EmailDraft;
   ctaUrl: string;
+  design: EmailDesign;
   segmentId: string;
   name: string;
 }): Promise<{ id: string }> {
@@ -135,8 +137,8 @@ export async function sendBroadcast(opts: {
       segmentId: opts.segmentId,
       subject: opts.draft.subject,
       previewText: opts.draft.preheader || undefined,
-      html: renderEmailHtml(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast" }),
-      text: renderEmailText(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast" }),
+      html: renderEmailHtml(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast", design: opts.design }),
+      text: renderEmailText(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast", design: opts.design }),
       send: true,
     }),
   );

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { errorResponse, guardRequest } from "@/lib/api";
+import { AssetValidationError, parseEmailDesign } from "@/lib/email-assets";
 import { EmailValidationError, normalizeCtaUrl, parseEmailDraft } from "@/lib/email-content";
 import { countSegmentRecipients, resendErrorMessage, sendBroadcast, verifyTestToken } from "@/lib/resend-server";
 
@@ -26,16 +27,18 @@ export async function POST(request: NextRequest) {
 
   let draft;
   let ctaUrl: string;
+  let design;
   try {
     draft = parseEmailDraft(body.draft);
     ctaUrl = normalizeCtaUrl(body.ctaUrl);
+    design = parseEmailDesign(body.template, body.assets);
   } catch (err) {
-    return errorResponse(400, "invalid_request", err instanceof EmailValidationError ? err.message : "Request tidak valid.");
+    return errorResponse(400, "invalid_request", err instanceof EmailValidationError || err instanceof AssetValidationError ? err.message : "Request tidak valid.");
   }
   const segmentId = typeof body.segmentId === "string" ? body.segmentId.trim() : "";
   if (!segmentId) return errorResponse(400, "invalid_request", "Pilih segment penerima.");
 
-  if (!(await verifyTestToken(body.testToken, draft, ctaUrl))) {
+  if (!(await verifyTestToken(body.testToken, draft, ctaUrl, design))) {
     return errorResponse(409, "test_required", "Kirim email tes untuk versi terakhir ini dulu sebelum broadcast.");
   }
 
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 100) : draft.subject.slice(0, 100);
-    const { id } = await sendBroadcast({ draft, ctaUrl, segmentId, name });
+    const { id } = await sendBroadcast({ draft, ctaUrl, design, segmentId, name });
     console.info("[email-broadcast] sent", { recipients });
     return NextResponse.json({ ok: true, broadcastId: id, recipients }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

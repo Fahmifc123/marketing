@@ -121,7 +121,20 @@ The **Email** menu writes, tests and broadcasts marketing emails through Resend.
 
    Resend's `{{{RESEND_UNSUBSCRIBE_URL}}}` is added to every broadcast.
 
-Environment: `RESEND_API_KEY` (Sensitive), `EMAIL_FROM`, and optionally `EMAIL_REPLY_TO`. All Resend calls are made
+**Templates & files.** Choose one of 5 built-in templates (`lib/email-assets.ts`): Klasik, Minimal, Banner (the first
+image becomes the hero), Newsletter, or Promo.
+
+Upload images (JPG/PNG/GIF, max 5 MB, downsized to 1200px wide in the browser) and files (PDF, Office, ZIP, max
+15 MB).
+- **Storage:** the browser uploads directly to the public Vercel Blob store `marketing-email-assets`, using
+  `/api/email/upload`. That route issues tokens only to signed-in users, and only for the allowed types and sizes.
+- **Placement:** images are shown in the email; files appear as "Unduh" links under *Lampiran*. Resend broadcasts
+  cannot carry attachments, so tests and broadcasts use the same hosted links.
+- **Safety:** only `*.public.blob.vercel-storage.com` URLs are accepted. The test token covers the template and the
+  assets, so changing either one requires a new test send.
+
+Environment: `RESEND_API_KEY` (Sensitive), `EMAIL_FROM`, `BLOB_READ_WRITE_TOKEN` (added automatically when the
+Blob store was connected), and optionally `EMAIL_REPLY_TO`. All Resend calls are made
 server-side (`lib/resend-server.ts`). Contacts and segments are managed in the Resend dashboard.
 
 ## Carousel (multi-slide)

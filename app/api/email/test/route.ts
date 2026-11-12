@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { errorResponse, guardRequest } from "@/lib/api";
+import { AssetValidationError, parseEmailDesign } from "@/lib/email-assets";
 import { EMAIL_LIMITS, EmailValidationError, normalizeCtaUrl, parseEmailDraft } from "@/lib/email-content";
 import { resendErrorMessage, sendTestEmail } from "@/lib/resend-server";
 
@@ -24,9 +25,11 @@ export async function POST(request: NextRequest) {
   let draft;
   let ctaUrl: string;
   let to: string[];
+  let design;
   try {
     draft = parseEmailDraft(body.draft);
     ctaUrl = normalizeCtaUrl(body.ctaUrl);
+    design = parseEmailDesign(body.template, body.assets);
     to = (Array.isArray(body.to) ? body.to : [])
       .map((t) => (typeof t === "string" ? t.trim() : ""))
       .filter(Boolean);
@@ -34,11 +37,11 @@ export async function POST(request: NextRequest) {
     if (to.length > EMAIL_LIMITS.maxTestRecipients) throw new EmailValidationError(`Maksimal ${EMAIL_LIMITS.maxTestRecipients} alamat tes.`);
     if (!to.every((t) => EMAIL_RE.test(t) && t.length <= 254)) throw new EmailValidationError("Alamat email tes tidak valid.");
   } catch (err) {
-    return errorResponse(400, "invalid_request", err instanceof EmailValidationError ? err.message : "Request tidak valid.");
+    return errorResponse(400, "invalid_request", err instanceof EmailValidationError || err instanceof AssetValidationError ? err.message : "Request tidak valid.");
   }
 
   try {
-    const { token } = await sendTestEmail(draft, ctaUrl, to);
+    const { token } = await sendTestEmail(draft, ctaUrl, design, to);
     return NextResponse.json({ ok: true, token, sentTo: to }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("[email-test] send failed", err instanceof Error ? err.name : "unknown");

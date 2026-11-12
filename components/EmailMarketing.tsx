@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 
+import EmailAssetsPanel, { TemplatePicker } from "@/components/EmailAssetsPanel";
+import type { EmailAsset, EmailDesign, EmailTemplateId } from "@/lib/email-assets";
 import {
   EMAIL_LIMITS,
   EMAIL_TYPES,
@@ -87,6 +89,8 @@ export default function EmailMarketing() {
   // Draft
   const [draft, setDraft] = useState<EmailDraft | null>(null);
   const [view, setView] = useState<"desktop" | "mobile">("desktop");
+  const [template, setTemplate] = useState<EmailTemplateId>("classic");
+  const [assets, setAssets] = useState<EmailAsset[]>([]);
 
   // Test send
   const [testTo, setTestTo] = useState("");
@@ -118,12 +122,13 @@ export default function EmailMarketing() {
   const issues = useMemo(() => (draft ? verifyEmailDraft(draft, source) : []), [draft, source]);
   const errors = issues.filter((i) => i.severity === "error");
   const issuesFor = (field: string) => issues.filter((i) => i.field === field);
-  const canonical = draft ? canonicalEmail(draft, ctaUrl.trim()) : "";
+  const design: EmailDesign = useMemo(() => ({ template, assets }), [template, assets]);
+  const canonical = draft ? canonicalEmail(draft, ctaUrl.trim(), design) : "";
   const testValid = Boolean(testResult && testResult.canonical === canonical);
   const segment = segments?.find((s) => s.id === segmentId);
   const previewHtml = useMemo(
-    () => (draft ? renderEmailHtml(draft, { ctaUrl: ctaUrl.trim(), mode: "preview" }) : ""),
-    [draft, ctaUrl],
+    () => (draft ? renderEmailHtml(draft, { ctaUrl: ctaUrl.trim(), mode: "preview", design }) : ""),
+    [draft, ctaUrl, design],
   );
 
   function update(patch: Partial<EmailDraft>) {
@@ -164,7 +169,7 @@ export default function EmailMarketing() {
       const data = await api<{ token: string; sentTo: string[] }>("/api/email/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft, ctaUrl: ctaUrl.trim(), to }),
+        body: JSON.stringify({ draft, ctaUrl: ctaUrl.trim(), template, assets, to }),
       });
       setTestResult({ token: data.token, canonical, sentTo: data.sentTo });
     } catch (err) {
@@ -196,6 +201,8 @@ export default function EmailMarketing() {
           draft,
           ctaUrl: ctaUrl.trim(),
           segmentId,
+          template,
+          assets,
           testToken: testResult.token,
           confirmRecipients: Number(confirmCount),
           name: draft.subject,
@@ -406,6 +413,14 @@ export default function EmailMarketing() {
                   + Tambah paragraf
                 </button>
               )}
+              <EmailAssetsPanel
+                assets={assets}
+                onChange={(next) => {
+                  setAssets(next);
+                  setBroadcastDone(null);
+                }}
+                template={template}
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label htmlFor={`${id}-ctal`} className={label}>
@@ -461,6 +476,17 @@ export default function EmailMarketing() {
                 </div>
               )}
             </div>
+            {draft && (
+              <div className="border-b border-line px-5 py-4">
+                <TemplatePicker
+                  value={template}
+                  onChange={(t) => {
+                    setTemplate(t);
+                    setBroadcastDone(null);
+                  }}
+                />
+              </div>
+            )}
             <div className="bg-canvas p-4">
               {draft ? (
                 <>

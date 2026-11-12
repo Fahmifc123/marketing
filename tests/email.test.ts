@@ -48,6 +48,7 @@ const draft: EmailDraft = {
   closing: "Salam hangat,\nTim Intelligo ID",
 };
 const CTA = "https://intelligo.id/bc-ai-tools";
+const D = { template: "classic" as const, assets: [] };
 
 describe("email content", () => {
   it("validates drafts", () => {
@@ -170,13 +171,13 @@ describe("resend server", () => {
 
   it("sends a test and binds the token to the exact content", async () => {
     resendMock.emails.send.mockResolvedValue({ data: { id: "e1" }, error: null });
-    const { token } = await sendTestEmail(draft, CTA, ["me@example.com"]);
+    const { token } = await sendTestEmail(draft, CTA, D, ["me@example.com"]);
     const payload = resendMock.emails.send.mock.calls[0][0];
     expect(payload.subject).toBe(`[TES] ${draft.subject}`);
     expect(payload.from).toContain("marketing.intelligo.id");
     expect(payload.html).not.toContain(UNSUBSCRIBE_PLACEHOLDER);
-    expect(await verifyTestToken(token, draft, CTA)).toBe(true);
-    expect(await verifyTestToken(token, { ...draft, subject: "ubah" }, CTA)).toBe(false);
+    expect(await verifyTestToken(token, draft, CTA, D)).toBe(true);
+    expect(await verifyTestToken(token, { ...draft, subject: "ubah" }, CTA, D)).toBe(false);
   });
 
   it("counts subscribed recipients across pages", async () => {
@@ -195,7 +196,7 @@ describe("resend server", () => {
 
   it("creates and sends a broadcast with the unsubscribe placeholder", async () => {
     resendMock.broadcasts.create.mockResolvedValue({ data: { id: "b1" }, error: null });
-    expect(await sendBroadcast({ draft, ctaUrl: CTA, segmentId: "seg", name: "Promo" })).toEqual({ id: "b1" });
+    expect(await sendBroadcast({ draft, ctaUrl: CTA, design: D, segmentId: "seg", name: "Promo" })).toEqual({ id: "b1" });
     const payload = resendMock.broadcasts.create.mock.calls[0][0];
     expect(payload).toMatchObject({ segmentId: "seg", send: true, subject: draft.subject, previewText: draft.preheader });
     expect(payload.html).toContain(UNSUBSCRIBE_PLACEHOLDER);
@@ -203,10 +204,10 @@ describe("resend server", () => {
 
   it("maps Resend errors to clean messages", async () => {
     resendMock.emails.send.mockResolvedValue({ data: null, error: { message: "API key is invalid", statusCode: 401 } });
-    const err = await sendTestEmail(draft, CTA, ["me@example.com"]).catch((e) => e);
+    const err = await sendTestEmail(draft, CTA, D, ["me@example.com"]).catch((e) => e);
     expect(resendErrorMessage(err).code).toBe("resend_auth");
     vi.stubEnv("EMAIL_FROM", "");
-    const cfg = await sendTestEmail(draft, CTA, ["me@example.com"]).catch((e) => e);
+    const cfg = await sendTestEmail(draft, CTA, D, ["me@example.com"]).catch((e) => e);
     expect(resendErrorMessage(cfg).code).toBe("email_not_configured");
   });
 });

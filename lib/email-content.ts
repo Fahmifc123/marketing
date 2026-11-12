@@ -4,6 +4,7 @@
  * Shared by the server and the browser (preview). Contains no internal prompt text.
  */
 import { findOverclaim, findUnsupportedFacts } from "@/lib/carousel-verifier";
+import { formatBytes, type EmailAsset, type EmailDesign } from "@/lib/email-assets";
 
 export const EMAIL_TYPES = [
   { id: "promo", label: "Promo program" },
@@ -124,32 +125,50 @@ export const UNSUBSCRIBE_PLACEHOLDER = "{{{RESEND_UNSUBSCRIBE_URL}}}";
 
 const escapeHtml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+const nl2br = (s: string) => escapeHtml(s).replace(/\n/g, "<br>");
 
 const NAVY = "#023047";
 const ORANGE = "#FF5400";
 const OFF_WHITE = "#F8FAFB";
+const PALE = "#EAF2F5";
+const LINE = "#DCE5E9";
 const MUTED = "#5A6B73";
 const FONT = "Arial, Helvetica, sans-serif";
+const CONTENT_WIDTH = 536;
 
 export interface RenderOptions {
   ctaUrl: string;
   /** "broadcast" adds Resend's unsubscribe placeholder; "test" and "preview" show a dummy link. */
   mode: "broadcast" | "test" | "preview";
+  design?: EmailDesign;
 }
 
-/** Email-safe HTML: table layout, inline styles, 600px, brand colours, no logo fabrication. */
-export function renderEmailHtml(draft: EmailDraft, { ctaUrl, mode }: RenderOptions): string {
-  const unsubscribe = mode === "broadcast" ? UNSUBSCRIBE_PLACEHOLDER : "#";
-  const paragraphs = draft.paragraphs
+const p = (text: string, extra = "") =>
+  `<p style="margin:0 0 16px 0;font-family:${FONT};font-size:16px;line-height:26px;color:${NAVY};${extra}">${nl2br(text)}</p>`;
+
+function button(label: string, url: string, big = false): string {
+  if (!url || !label) return "";
+  const pad = big ? "18px" : "14px";
+  const size = big ? "18px" : "16px";
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;"><tr><td bgcolor="${ORANGE}" style="background-color:${ORANGE};border-radius:8px;"><a href="${escapeHtml(url)}" target="_blank" style="display:inline-block;padding-top:${pad};padding-bottom:${pad};padding-left:32px;padding-right:32px;font-family:${FONT};font-size:${size};line-height:22px;font-weight:bold;color:#FFFFFF;text-decoration:none;">${escapeHtml(label)}</a></td></tr></table>`;
+}
+
+function image(asset: EmailAsset, width = CONTENT_WIDTH, radius = 8): string {
+  return `<img src="${escapeHtml(asset.url)}" width="${width}" alt="${escapeHtml(asset.alt || asset.name)}" border="0" style="display:block;width:100%;max-width:${width}px;height:auto;border:0;border-radius:${radius}px;margin:0 0 20px 0;">`;
+}
+
+function attachments(files: EmailAsset[]): string {
+  if (!files.length) return "";
+  const rows = files
     .map(
-      (p) =>
-        `<p style="margin:0 0 16px 0;font-family:${FONT};font-size:16px;line-height:26px;color:${NAVY};">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`,
+      (f) =>
+        `<tr><td style="padding-top:12px;padding-bottom:12px;border-top:1px solid ${LINE};font-family:${FONT};font-size:14px;line-height:20px;color:${NAVY};">📎 ${escapeHtml(f.name)}${f.size ? `<span style="color:${MUTED};"> · ${formatBytes(f.size)}</span>` : ""}</td><td align="right" style="padding-top:12px;padding-bottom:12px;border-top:1px solid ${LINE};"><a href="${escapeHtml(f.url)}" target="_blank" style="font-family:${FONT};font-size:14px;line-height:20px;font-weight:bold;color:${ORANGE};text-decoration:none;">Unduh</a></td></tr>`,
     )
     .join("");
-  const button =
-    ctaUrl && draft.ctaLabel
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px 0;"><tr><td bgcolor="${ORANGE}" style="background-color:${ORANGE};border-radius:8px;"><a href="${escapeHtml(ctaUrl)}" target="_blank" style="display:inline-block;padding-top:14px;padding-bottom:14px;padding-left:28px;padding-right:28px;font-family:${FONT};font-size:16px;line-height:20px;font-weight:bold;color:#FFFFFF;text-decoration:none;">${escapeHtml(draft.ctaLabel)}</a></td></tr></table>`
-      : "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 20px 0;"><tr><td colspan="2" style="padding-bottom:4px;font-family:${FONT};font-size:12px;line-height:16px;font-weight:bold;letter-spacing:1px;color:${MUTED};">LAMPIRAN</td></tr>${rows}</table>`;
+}
+
+function shell(inner: string, draft: EmailDraft, footer: string): string {
   return `<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -163,17 +182,8 @@ export function renderEmailHtml(draft: EmailDraft, { ctaUrl, mode }: RenderOptio
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${OFF_WHITE}" style="background-color:${OFF_WHITE};">
 <tr><td align="center" style="padding-top:24px;padding-bottom:24px;padding-left:12px;padding-right:12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
-<tr><td bgcolor="${NAVY}" style="background-color:${NAVY};padding-top:20px;padding-bottom:20px;padding-left:32px;padding-right:32px;border-radius:12px 12px 0 0;font-family:${FONT};font-size:13px;line-height:18px;font-weight:bold;letter-spacing:3px;color:#FFFFFF;">INTELLIGO ID</td></tr>
-<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:32px;padding-bottom:16px;padding-left:32px;padding-right:32px;">
-${draft.heading ? `<h1 style="margin:0 0 20px 0;font-family:${FONT};font-size:26px;line-height:34px;font-weight:bold;color:${NAVY};">${escapeHtml(draft.heading)}</h1>` : ""}
-${paragraphs}
-${button}
-${draft.closing ? `<p style="margin:0 0 16px 0;font-family:${FONT};font-size:16px;line-height:26px;color:${NAVY};">${escapeHtml(draft.closing).replace(/\n/g, "<br>")}</p>` : ""}
-</td></tr>
-<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:16px;padding-bottom:28px;padding-left:32px;padding-right:32px;border-top:1px solid #DCE5E9;border-radius:0 0 12px 12px;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
-Kamu menerima email ini karena terdaftar di komunitas Intelligo ID.<br>
-<a href="${unsubscribe}" style="color:${MUTED};text-decoration:underline;">Berhenti berlangganan</a>
-</td></tr>
+${inner}
+${footer}
 </table>
 </td></tr>
 </table>
@@ -181,12 +191,84 @@ Kamu menerima email ini karena terdaftar di komunitas Intelligo ID.<br>
 </html>`;
 }
 
+function footerRow(unsubscribe: string, radius: boolean): string {
+  return `<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:16px;padding-bottom:28px;padding-left:32px;padding-right:32px;border-top:1px solid ${LINE};${radius ? "border-radius:0 0 12px 12px;" : ""}font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
+Kamu menerima email ini karena terdaftar di komunitas Intelligo ID.<br>
+<a href="${unsubscribe}" style="color:${MUTED};text-decoration:underline;">Berhenti berlangganan</a>
+</td></tr>`;
+}
+
+const cell = (html: string, extra = "") =>
+  `<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:32px;padding-bottom:16px;padding-left:32px;padding-right:32px;${extra}">${html}</td></tr>`;
+
+const headerBar = `<tr><td bgcolor="${NAVY}" style="background-color:${NAVY};padding-top:20px;padding-bottom:20px;padding-left:32px;padding-right:32px;border-radius:12px 12px 0 0;font-family:${FONT};font-size:13px;line-height:18px;font-weight:bold;letter-spacing:3px;color:#FFFFFF;">INTELLIGO ID</td></tr>`;
+
+const h1 = (text: string, color = NAVY, size = 26) =>
+  text ? `<h1 style="margin:0 0 20px 0;font-family:${FONT};font-size:${size}px;line-height:${Math.round(size * 1.3)}px;font-weight:bold;color:${color};">${escapeHtml(text)}</h1>` : "";
+
+/** Email-safe HTML: table layout, inline styles, 600px, brand colours, no logo fabrication. */
+export function renderEmailHtml(draft: EmailDraft, { ctaUrl, mode, design = { template: "classic", assets: [] } }: RenderOptions): string {
+  const unsubscribe = mode === "broadcast" ? UNSUBSCRIBE_PLACEHOLDER : "#";
+  const images = design.assets.filter((a) => a.kind === "image");
+  const files = design.assets.filter((a) => a.kind === "file");
+  const closing = draft.closing ? p(draft.closing) : "";
+  const bodyImages = (list: EmailAsset[]) => list.map((a) => image(a)).join("");
+
+  switch (design.template) {
+    case "minimal": {
+      const inner = `<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:28px;padding-bottom:12px;padding-left:32px;padding-right:32px;border-radius:12px 12px 0 0;font-family:${FONT};font-size:12px;line-height:18px;font-weight:bold;letter-spacing:2px;color:${MUTED};">INTELLIGO ID</td></tr>
+${cell(`${h1(draft.heading, NAVY, 22)}${draft.paragraphs.map((x) => p(x)).join("")}${bodyImages(images)}${button(draft.ctaLabel, ctaUrl)}${attachments(files)}${closing}`, "padding-top:8px;")}`;
+      return shell(inner, draft, footerRow(unsubscribe, true));
+    }
+    case "banner": {
+      const [hero, ...rest] = images;
+      const heroRow = hero
+        ? `<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:0;border-radius:12px 12px 0 0;"><img src="${escapeHtml(hero.url)}" width="600" alt="${escapeHtml(hero.alt || hero.name)}" border="0" style="display:block;width:100%;max-width:600px;height:auto;border:0;border-radius:12px 12px 0 0;"></td></tr>`
+        : headerBar;
+      const inner = `${heroRow}
+${cell(`${h1(draft.heading)}${draft.paragraphs.map((x) => p(x)).join("")}${bodyImages(rest)}${button(draft.ctaLabel, ctaUrl)}${attachments(files)}${closing}`)}`;
+      return shell(inner, draft, footerRow(unsubscribe, true));
+    }
+    case "newsletter": {
+      const sections = draft.paragraphs
+        .map(
+          (x, i) =>
+            `<tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding-top:24px;padding-bottom:8px;padding-left:32px;padding-right:32px;border-top:${i === 0 ? "0" : `1px solid ${LINE}`};">${p(x)}${images[i] ? image(images[i]) : ""}</td></tr>`,
+        )
+        .join("");
+      const extraImages = images.slice(draft.paragraphs.length);
+      const inner = `${headerBar}
+<tr><td bgcolor="${PALE}" style="background-color:${PALE};padding-top:28px;padding-bottom:24px;padding-left:32px;padding-right:32px;">${h1(draft.heading, NAVY, 24).replace("margin:0 0 20px 0", "margin:0")}</td></tr>
+${sections}
+${cell(`${bodyImages(extraImages)}${button(draft.ctaLabel, ctaUrl)}${attachments(files)}${closing}`, "padding-top:16px;")}`;
+      return shell(inner, draft, footerRow(unsubscribe, true));
+    }
+    case "promo": {
+      const inner = `<tr><td bgcolor="${NAVY}" style="background-color:${NAVY};padding-top:36px;padding-bottom:32px;padding-left:32px;padding-right:32px;border-radius:12px 12px 0 0;">
+<p style="margin:0 0 16px 0;font-family:${FONT};font-size:12px;line-height:16px;font-weight:bold;letter-spacing:3px;color:#94C6D3;">INTELLIGO ID</p>
+${h1(draft.heading || draft.subject, "#FFFFFF", 30)}
+${button(draft.ctaLabel, ctaUrl, true)}
+</td></tr>
+${cell(`${bodyImages(images)}${draft.paragraphs.map((x) => p(x)).join("")}${button(draft.ctaLabel, ctaUrl)}${attachments(files)}${closing}`)}`;
+      return shell(inner, draft, footerRow(unsubscribe, true));
+    }
+    case "classic":
+    default: {
+      const inner = `${headerBar}
+${cell(`${h1(draft.heading)}${draft.paragraphs.map((x) => p(x)).join("")}${bodyImages(images)}${button(draft.ctaLabel, ctaUrl)}${attachments(files)}${closing}`)}`;
+      return shell(inner, draft, footerRow(unsubscribe, true));
+    }
+  }
+}
+
 /** Plain-text alternative (improves deliverability). */
-export function renderEmailText(draft: EmailDraft, { ctaUrl, mode }: RenderOptions): string {
+export function renderEmailText(draft: EmailDraft, { ctaUrl, mode, design }: RenderOptions): string {
+  const files = design?.assets.filter((a) => a.kind === "file") ?? [];
   return [
     draft.heading,
     ...draft.paragraphs,
     ctaUrl && draft.ctaLabel ? `${draft.ctaLabel}: ${ctaUrl}` : "",
+    files.length ? `Lampiran:\n${files.map((f) => `- ${f.name}: ${f.url}`).join("\n")}` : "",
     draft.closing,
     "",
     "—",
@@ -198,7 +280,17 @@ export function renderEmailText(draft: EmailDraft, { ctaUrl, mode }: RenderOptio
     .trim();
 }
 
-/** Stable serialization used to bind a test send to the exact content being broadcast. */
-export function canonicalEmail(draft: EmailDraft, ctaUrl: string): string {
-  return JSON.stringify([draft.subject, draft.preheader, draft.heading, draft.paragraphs, draft.ctaLabel, draft.closing, ctaUrl]);
+/** Stable serialization used to bind a test send to the exact content and design being broadcast. */
+export function canonicalEmail(draft: EmailDraft, ctaUrl: string, design: EmailDesign = { template: "classic", assets: [] }): string {
+  return JSON.stringify([
+    draft.subject,
+    draft.preheader,
+    draft.heading,
+    draft.paragraphs,
+    draft.ctaLabel,
+    draft.closing,
+    ctaUrl,
+    design.template,
+    design.assets.map((a) => [a.url, a.name, a.kind, a.alt]),
+  ]);
 }
