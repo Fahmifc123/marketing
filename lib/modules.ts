@@ -5,7 +5,7 @@
 export type ModuleStatus = "active" | "coming-soon";
 
 export interface WorkspaceModule {
-  id: "ai-image" | "content" | "campaign" | "assets";
+  id: "ai-image" | "email" | "content" | "campaign" | "assets";
   label: string;
   href: string;
   status: ModuleStatus;
@@ -19,6 +19,13 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
     href: "/dashboard",
     status: "active",
     description: "Turn your idea into an Intelligo ID visual.",
+  },
+  {
+    id: "email",
+    label: "Email",
+    href: "/dashboard/email",
+    status: "active",
+    description: "Email marketing via Resend: draft, test send and broadcast to segments.",
   },
   {
     id: "content",

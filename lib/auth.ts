@@ -149,3 +149,24 @@ export function getClientIp(request: Request): string {
     "unknown"
   );
 }
+
+/**
+ * Signs a short-lived value with the session key, e.g. to prove an email
+ * test send happened for exact content before a broadcast is allowed.
+ * Format: `<expiresAtMs>.<signature>`; the value itself is not embedded.
+ */
+export async function signValue(value: string, ttlMs: number, now = Date.now()): Promise<string> {
+  const key = await getSigningKey();
+  if (!key) throw new Error("MARKETING_ACCESS_CODE is not configured");
+  const expiresAt = now + ttlMs;
+  return `${expiresAt}.${await sign(`${expiresAt}:${value}`, key)}`;
+}
+
+export async function verifySignedValue(token: string, value: string, now = Date.now()): Promise<boolean> {
+  const [exp, signature] = token.split(".");
+  const expiresAt = Number(exp);
+  if (!signature || !Number.isFinite(expiresAt) || expiresAt <= now) return false;
+  const key = await getSigningKey();
+  if (!key) return false;
+  return safeStringEqual(await sign(`${exp}:${value}`, key), signature);
+}

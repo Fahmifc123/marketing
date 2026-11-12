@@ -99,6 +99,31 @@ user's key and `CAROUSEL_PLANNER_MODEL`. Code: `lib/meta-copy*.ts`, `app/api/met
 rules (no invented prices, URLs or QR codes). ChatGPT then answers in exactly the `Gaya umum:` / `Slide N:` format the
 paste parser expects.
 
+## Email Marketing (`/dashboard/email`)
+
+The **Email** menu writes, tests and broadcasts marketing emails through Resend. It sends from the verified domain
+`marketing.intelligo.id`.
+
+1. **Draft.** Write a brief, choose the email type, and add an optional CTA link.
+   - The OpenAI text model writes the subject, preheader, heading, paragraphs, button text and closing
+     (`lib/email-writer.ts`). It uses the user's own key and runs one revision round when the verifier finds errors.
+   - Alternatively, use **Tulis manual** to write the draft yourself.
+   - Every field is editable and re-checked live: facts not in the brief or CTA link, and overclaims, are errors.
+2. **Preview.** The email-safe HTML (`lib/email-content.ts`: tables, inline styles, 600px, brand colours, no logo
+   fabrication) is shown in a sandboxed iframe, at desktop or mobile width.
+3. **Test send** (`/api/email/test`). The email goes to at most 3 addresses with a `[TES]` subject prefix. The server
+   returns a signed token tied to the exact content: any later edit invalidates it.
+4. **Broadcast** (`/api/email/broadcast`) to a Resend Segment. The server refuses to send unless:
+   - the test token matches the content,
+   - the marketer typed the recipient count, and it equals the server's own recount,
+   - the segment is not empty and has fewer than 10,000 counted contacts (bigger segments go through the Resend
+     dashboard).
+
+   Resend's `{{{RESEND_UNSUBSCRIBE_URL}}}` is added to every broadcast.
+
+Environment: `RESEND_API_KEY` (Sensitive), `EMAIL_FROM`, and optionally `EMAIL_REPLY_TO`. All Resend calls are made
+server-side (`lib/resend-server.ts`). Contacts and segments are managed in the Resend dashboard.
+
 ## Carousel (multi-slide)
 
 The **Carousel** tab produces a whole carousel in one flow. A main agent plans and verifies every slide before
