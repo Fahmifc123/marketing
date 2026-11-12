@@ -7,7 +7,7 @@
  */
 import "server-only";
 
-import { BlobPreconditionFailedError, get, put } from "@vercel/blob";
+import { BlobNotFoundError, BlobPreconditionFailedError, get, head, put } from "@vercel/blob";
 
 import { isEmail, type GroupType, type ParsedRow } from "@/lib/contacts";
 
@@ -54,11 +54,19 @@ export function storeReady(): boolean {
 }
 
 async function load(): Promise<{ db: Db; etag: string | null }> {
+  // The API ETag (what put's ifMatch compares) comes from head(); the GET
+  // response carries the CDN's own ETag, which never matches.
+  let etag: string | null;
+  try {
+    etag = (await head(PATH, auth())).etag;
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return { db: structuredClone(EMPTY), etag: null };
+    throw err;
+  }
   const res = await get(PATH, { access: "private", ...auth(), useCache: false });
-  if (!res) return { db: structuredClone(EMPTY), etag: null };
-  const text = await new Response(res.stream).text();
-  const db = JSON.parse(text) as Db;
-  return { db: { ...EMPTY, ...db }, etag: res.blob.etag };
+  if (!res?.stream) return { db: structuredClone(EMPTY), etag: null };
+  const db = JSON.parse(await new Response(res.stream).text()) as Db;
+  return { db: { ...EMPTY, ...db }, etag };
 }
 
 async function save(db: Db, etag: string | null, force = false) {

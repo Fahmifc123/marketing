@@ -4,8 +4,14 @@ vi.mock("server-only", () => ({}));
 const mem: { body: string | null; etag: number; badEtag?: boolean } = { body: null, etag: 0 };
 vi.mock("@vercel/blob", () => {
   class BlobPreconditionFailedError extends Error {}
+  class BlobNotFoundError extends Error {}
   return {
     BlobPreconditionFailedError,
+    BlobNotFoundError,
+    head: async () => {
+      if (mem.body === null) throw new BlobNotFoundError();
+      return { etag: String(mem.etag) };
+    },
     get: async () => (mem.body === null ? null : { stream: new Blob([mem.body]).stream(), blob: { etag: String(mem.etag) } }),
     put: async (_p: string, body: string, o: { ifMatch?: string }) => {
       if (o.ifMatch && (mem.badEtag || o.ifMatch !== String(mem.etag))) throw new BlobPreconditionFailedError();
