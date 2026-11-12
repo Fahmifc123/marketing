@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 
 import { GROUP_LABEL, isEmail, parseContactsCsv, type GroupType, type ParsedRow } from "@/lib/contacts";
-import { api, jsonInit, waitForImport, type GroupItem } from "@/lib/email-api-client";
+import { api, jsonInit, type GroupItem } from "@/lib/email-api-client";
 
 interface Contact {
   id: string;
@@ -291,7 +291,7 @@ export function CsvPicker({ onRows, disabled }: { onRows: (r: { rows: ParsedRow[
           }}
         />
       </label>
-      <p className="mt-1.5 text-xs text-muted">{info ?? "Kolom email wajib (judul kolom \"email\"). Kolom nama opsional. Pemisah koma atau titik koma."}</p>
+      <p className="mt-1.5 text-xs text-muted">{info ?? "Kolom email wajib. Opsional: nama, \"kategori\" dan \"tag\" (beberapa dipisah ;) — kategori/tag otomatis dibuat. Pemisah koma atau titik koma."}</p>
     </div>
   );
 }
@@ -316,11 +316,8 @@ function ImportCsv({ groups, defaultGroup, onDone }: { groups: GroupItem[]; defa
               setBusy("Mengupload…");
               setMsg(null);
               try {
-                const { importId } = await api<{ importId: string }>("/api/email/contacts/import", jsonInit("POST", { rows: parsed.rows, groupIds }));
-                const res = await waitForImport(importId, (s) => setBusy(s === "completed" ? "Selesai" : "Resend memproses import…"));
-                if (res.status === "failed") throw new Error("Import gagal di Resend.");
-                const c = res.counts;
-                setMsg({ ok: true, text: `Import selesai: ${c.created ?? 0} baru, ${c.updated ?? 0} diperbarui${c.failed ? `, ${c.failed} gagal` : ""}.` });
+                const c = await api<{ created: number; updated: number; total: number }>("/api/email/contacts/import", jsonInit("POST", { rows: parsed.rows, groupIds }));
+                setMsg({ ok: true, text: `Import selesai: ${c.created} baru, ${c.updated} diperbarui. Total database: ${c.total} kontak.` });
                 setParsed(null);
                 onDone();
               } catch (err) {
@@ -369,8 +366,7 @@ function ContactEditor({ contact, groups, onClose, onChanged }: { contact: Conta
           firstName,
           lastName,
           unsubscribed,
-          addGroups: selected.filter((g) => !original.includes(g)),
-          removeGroups: original.filter((g) => !selected.includes(g)),
+          groups: selected,
         }),
       );
       onChanged();
@@ -438,31 +434,39 @@ export default function EmailDatabase() {
   const { groups, error: groupsError, reload } = useGroups(true);
   const [filter, setFilter] = useState("");
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [next, setNext] = useState<string | null>(null);
+  const [next, setNext] = useState<number | null>(null);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [tab, setTab] = useState<"add" | "csv">("add");
 
   const load = useCallback(
-    async (after?: string) => {
+    async (offset?: number) => {
       setLoading(true);
       setError(null);
       try {
         const q = new URLSearchParams();
-        if (filter) q.set("segmentId", filter);
-        if (after) q.set("after", after);
-        const r = await api<{ contacts: Contact[]; next: string | null }>(`/api/email/contacts?${q}`);
-        setContacts((c) => (after ? [...c, ...r.contacts] : r.contacts));
+        if (filter) q.set("groupId", filter);
+        if (query) q.set("search", query);
+        if (offset) q.set("offset", String(offset));
+        const r = await api<{ contacts: Contact[]; next: number | null; total: number }>(`/api/email/contacts?${q}`);
+        setContacts((c) => (offset ? [...c, ...r.contacts] : r.contacts));
         setNext(r.next);
+        setTotal(r.total);
       } catch (err) {
         setError((err as Error).message);
       } finally {
         setLoading(false);
       }
     },
-    [filter],
+    [filter, query],
   );
 
   useEffect(() => {
@@ -474,9 +478,7 @@ export default function EmailDatabase() {
     void load();
     void reload();
   };
-  const shown = search.trim()
-    ? contacts.filter((c) => `${c.email} ${c.firstName ?? ""} ${c.lastName ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()))
-    : contacts;
+  const shown = contacts;
   const filterName = groups?.find((g) => g.id === filter)?.name;
 
   return (
@@ -509,8 +511,10 @@ export default function EmailDatabase() {
 
         <section className="panel p-5 sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="eyebrow">{filterName ? `Kontak · ${filterName}` : "Semua kontak"}</p>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari di daftar yang dimuat…" aria-label="Cari kontak" className="field w-full py-2 text-sm sm:w-64" />
+            <p className="eyebrow">
+              {filterName ? `Kontak · ${filterName}` : "Semua kontak"} · {total}
+            </p>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari email atau nama…" aria-label="Cari kontak" className="field w-full py-2 text-sm sm:w-64" />
           </div>
           {error && <p role="alert" className="mb-3 text-sm text-danger">{error}</p>}
           <div className="overflow-x-auto">

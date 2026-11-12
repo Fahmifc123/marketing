@@ -85,7 +85,7 @@ export default function EmailMarketing() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastError, setBroadcastError] = useState<string | null>(null);
-  const [broadcastDone, setBroadcastDone] = useState<{ id: string; recipients: number } | null>(null);
+  const [broadcastDone, setBroadcastDone] = useState<{ sent: number; failed: number; recipients: number; error: string | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,13 +158,15 @@ export default function EmailMarketing() {
     setBroadcasting(true);
     setBroadcastError(null);
     try {
-      const data = await api<{ broadcastId: string; recipients: number }>("/api/email/broadcast", {
+      const data = await api<{ sent: number; failed: number; recipients: number; error: string | null }>("/api/email/broadcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           draft,
           ctaUrl: ctaUrl.trim(),
-          segmentId: segment.id,
+          groupIds: segment.groupIds,
+          rows: segment.rows,
+          saveToGroupIds: segment.saveToGroupIds,
           template,
           assets,
           testToken: testResult.token,
@@ -172,7 +174,7 @@ export default function EmailMarketing() {
           name: draft.subject,
         }),
       });
-      setBroadcastDone({ id: data.broadcastId, recipients: data.recipients });
+      setBroadcastDone({ sent: data.sent, failed: data.failed, recipients: data.recipients, error: data.error });
       setConfirmCount("");
       setAcknowledged(false);
     } catch (err) {
@@ -529,7 +531,6 @@ export default function EmailMarketing() {
                 4 · Kirim ke penerima
               </p>
               <RecipientPicker
-                label={draft.subject || "Email"}
                 disabled={!status?.ready || broadcasting}
                 value={segment}
                 onChange={(a) => {
@@ -578,7 +579,9 @@ export default function EmailMarketing() {
               {broadcastError && <p role="alert" className="text-sm text-danger">{broadcastError}</p>}
               {broadcastDone && (
                 <p role="status" className="rounded-lg bg-pale px-4 py-3 text-sm font-semibold text-navy">
-                  ✓ Broadcast dikirim ke {broadcastDone.recipients} penerima. Pantau statistiknya di dashboard Resend → Broadcasts.
+                  {broadcastDone.failed === 0
+                    ? `✓ Terkirim ke ${broadcastDone.sent} penerima.`
+                    : `Terkirim ${broadcastDone.sent} dari ${broadcastDone.recipients}. ${broadcastDone.failed} belum terkirim: ${broadcastDone.error ?? "gagal"}`}
                 </p>
               )}
               <button

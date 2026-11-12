@@ -14,6 +14,7 @@ import { Resend } from "resend";
 import { signValue, verifySignedValue } from "@/lib/auth";
 import type { EmailDesign } from "@/lib/email-assets";
 import {
+  UNSUBSCRIBE_PLACEHOLDER,
   canonicalEmail,
   renderEmailHtml,
   renderEmailText,
@@ -160,4 +161,54 @@ export function resendErrorMessage(err: unknown): { status: number; code: string
     }
   }
   return { status: 502, code: "resend_failed", message: "Gagal menghubungi Resend. Coba lagi." };
+}
+
+const BATCH_SIZE = 100;
+
+export interface SendResult {
+  sent: number;
+  failed: number;
+  /** First failure reason (e.g. daily quota reached). */
+  error: string | null;
+}
+
+/**
+ * Sends the email to each recipient individually (Resend batch API, 100 per
+ * call) with a personal unsubscribe link. Stops at the first failing batch
+ * and reports how many were sent.
+ */
+export async function sendToRecipients(opts: {
+  draft: EmailDraft;
+  ctaUrl: string;
+  design: EmailDesign;
+  recipients: string[];
+  unsubscribeUrl: (email: string) => Promise<string>;
+}): Promise<SendResult> {
+  const { resend, from, replyTo } = client();
+  const html = renderEmailHtml(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast", design: opts.design });
+  const text = renderEmailText(opts.draft, { ctaUrl: opts.ctaUrl, mode: "broadcast", design: opts.design });
+  let sent = 0;
+  for (let i = 0; i < opts.recipients.length; i += BATCH_SIZE) {
+    const chunk = opts.recipients.slice(i, i + BATCH_SIZE);
+    const emails = await Promise.all(
+      chunk.map(async (to) => {
+        const url = await opts.unsubscribeUrl(to);
+        return {
+          from,
+          to: [to],
+          replyTo,
+          subject: opts.draft.subject,
+          html: html.split(UNSUBSCRIBE_PLACEHOLDER).join(url),
+          text: text.split(UNSUBSCRIBE_PLACEHOLDER).join(url),
+          headers: { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+        };
+      }),
+    );
+    const res = await resend.batch.send(emails);
+    if (res.error) {
+      return { sent, failed: opts.recipients.length - sent, error: resendErrorMessage(new ResendRequestError(res.error.message, res.error.statusCode ?? null)).message };
+    }
+    sent += chunk.length;
+  }
+  return { sent, failed: 0, error: null };
 }

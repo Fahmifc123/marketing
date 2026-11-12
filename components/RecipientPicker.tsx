@@ -4,10 +4,12 @@ import { useState } from "react";
 
 import { CsvPicker, GroupChecklist, useGroups } from "@/components/EmailDatabase";
 import { parseEmailList, type ParsedRow } from "@/lib/contacts";
-import { api, jsonInit, waitForImport } from "@/lib/email-api-client";
+import { api, jsonInit } from "@/lib/email-api-client";
 
 export interface PreparedAudience {
-  id: string;
+  groupIds: string[];
+  rows: ParsedRow[];
+  saveToGroupIds: string[];
   name: string;
   recipients: number;
   capped: boolean;
@@ -16,22 +18,20 @@ export interface PreparedAudience {
 type Mode = "groups" | "csv" | "manual";
 
 /**
- * Chooses who receives the broadcast: categories/tags from the database, a CSV,
- * or typed addresses. Anything but a single category/tag is merged into a
- * one-off send list first; the result is one Resend segment to broadcast.
+ * Chooses who receives the email: categories/tags from our database, a CSV,
+ * or typed addresses (deduped, unsubscribes skipped). The server recounts and
+ * sends; this only previews the count.
  */
 export default function RecipientPicker({
-  label,
   disabled,
   value,
   onChange,
 }: {
-  label: string;
   disabled?: boolean;
   value: PreparedAudience | null;
   onChange: (a: PreparedAudience | null) => void;
 }) {
-  const { groups, error: groupsError, reload } = useGroups(true);
+  const { groups, error: groupsError } = useGroups(true);
   const [mode, setMode] = useState<Mode>("groups");
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [csv, setCsv] = useState<{ rows: ParsedRow[]; name: string } | null>(null);
@@ -55,29 +55,16 @@ export default function RecipientPicker({
     if (!rows.length && !ids.length) return setError("Belum ada penerima yang dipilih.");
     if (mode === "manual" && typedParsed.invalid.length) return setError(`Email tidak valid: ${typedParsed.invalid.slice(0, 3).join(", ")}`);
 
-    // One category/tag: broadcast to it directly.
-    if (mode === "groups" && ids.length === 1) {
-      const g = groups?.find((x) => x.id === ids[0]);
-      if (g) return onChange({ id: g.id, name: g.name, recipients: g.recipients, capped: g.capped });
-    }
-
     try {
-      setBusy("Menyiapkan daftar penerima…");
-      const built = await api<{ segmentId: string; importId: string; total: number }>(
-        "/api/email/send-list",
-        jsonInit("POST", { label, groupIds: ids, rows, saveToGroupIds: mode === "groups" ? [] : saveTo }),
-      );
-      const res = await waitForImport(built.importId, () => setBusy("Resend memproses daftar penerima…"));
-      if (res.status === "failed") throw new Error("Resend gagal memproses daftar penerima.");
-      const count = await api<{ recipients: number; capped: boolean }>(`/api/email/send-list?segmentId=${encodeURIComponent(built.segmentId)}`);
+      setBusy("Menghitung penerima…");
+      const { recipients } = await api<{ recipients: number }>("/api/email/recipients", jsonInit("POST", { groupIds: ids, rows }));
       const names =
         mode === "groups"
           ? (groups ?? []).filter((g) => ids.includes(g.id)).map((g) => g.name).join(" + ")
           : mode === "csv"
             ? (csv?.name ?? "CSV")
             : `${rows.length} email diketik`;
-      onChange({ id: built.segmentId, name: names, recipients: count.recipients, capped: count.capped });
-      if (saveTo.length) void reload();
+      onChange({ groupIds: ids, rows, saveToGroupIds: mode === "groups" ? [] : saveTo, name: names, recipients, capped: false });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -170,7 +157,7 @@ export default function RecipientPicker({
         </p>
       )}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      <p className="text-[11px] text-muted">Email dari CSV / ketik ikut tersimpan di Database Email. Kontak yang sudah unsubscribe tidak akan dikirimi.</p>
+      <p className="text-[11px] text-muted">Email dari CSV / ketik ikut tersimpan di Database Email saat dikirim. Kontak yang sudah unsubscribe tidak akan dikirimi.</p>
     </div>
   );
 }

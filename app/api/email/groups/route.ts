@@ -1,16 +1,14 @@
 import { type NextRequest } from "next/server";
 
 import { groupType, handle, str } from "@/lib/contacts-api";
-import { createGroup, deleteGroup, listGroups, renameGroup } from "@/lib/contacts-server";
+import { createGroup, deleteGroup, groupsWithCounts, readDb, renameGroup } from "@/lib/contact-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
-/** Categories & tags of the email database. */
+/** Categories & tags (stored in our own database). */
 export async function GET(request: NextRequest) {
-  const counts = request.nextUrl.searchParams.get("counts") !== "0";
-  return handle(request, async () => ({ groups: await listGroups(counts) }));
+  return handle(request, async () => ({ groups: groupsWithCounts(await readDb()) }));
 }
 
 export async function POST(request: NextRequest) {
@@ -19,7 +17,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   return handle(request, async (b) => {
-    await renameGroup(str(b.id, "ID"), groupType(b.type), str(b.name, "Nama", 80));
+    await renameGroup(str(b.id, "ID"), str(b.name, "Nama", 80));
     return {};
   });
 }

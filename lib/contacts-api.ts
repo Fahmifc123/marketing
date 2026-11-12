@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { errorResponse, guardRequest } from "@/lib/api";
 import { isEmail, type GroupType, type ParsedRow } from "@/lib/contacts";
+import { StoreConfigError, StoreInputError } from "@/lib/contact-store";
 import { resendErrorMessage } from "@/lib/resend-server";
 
 export class BadInput extends Error {}
@@ -24,7 +25,12 @@ export async function handle(request: NextRequest, fn: (body: Record<string, unk
     const data = await fn(body);
     return NextResponse.json({ ok: true, ...(data as object) }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
-    if (err instanceof BadInput) return errorResponse(400, "invalid_request", err.message);
+    if (err instanceof BadInput || err instanceof StoreInputError) return errorResponse(400, "invalid_request", err.message);
+    if (err instanceof StoreConfigError) return errorResponse(503, "store_not_configured", err.message);
+    if ((err as Error)?.name?.startsWith("Blob")) {
+      console.error("[contacts] blob error", (err as Error).name);
+      return errorResponse(502, "store_failed", "Gagal mengakses database kontak. Coba lagi.");
+    }
     const { status, code, message } = resendErrorMessage(err);
     return errorResponse(status, code, message);
   }
@@ -63,7 +69,15 @@ export function rows(v: unknown): ParsedRow[] {
     if (seen.has(email)) continue;
     seen.add(email);
     const name = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim().slice(0, 80) : undefined);
-    out.push({ email, firstName: name(r.firstName), lastName: name(r.lastName) });
+    const names = (x: unknown) => (Array.isArray(x) ? x.filter((n): n is string => typeof n === "string" && Boolean(n.trim())).slice(0, 10).map((n) => n.trim().slice(0, 80)) : undefined);
+    out.push({
+      email,
+      firstName: name(r.firstName),
+      lastName: name(r.lastName),
+      categories: names(r.categories),
+      tags: names(r.tags),
+      source: typeof r.source === "string" ? r.source.slice(0, 120) : undefined,
+    });
   }
   return out;
 }

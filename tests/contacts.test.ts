@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 import { groupName, isEmail, parseContactsCsv, parseEmailList, parseGroupName } from "@/lib/contacts";
-import { rowsToCsv } from "@/lib/contacts-server";
 
 describe("groups", () => {
   it("round-trips category and tag names; unprefixed = category; send lists recognised", () => {
@@ -27,8 +26,9 @@ describe("csv", () => {
     const r = parseContactsCsv('"Lee, Ann",ann@z.io\nbob@z.io,Bob');
     expect(r.rows.map((x) => x.email)).toEqual(["ann@z.io"]); // column found from the first row
   });
-  it("escapes CSV for Resend import", () => {
-    expect(rowsToCsv([{ email: "a@b.co", firstName: 'Ann "A", Jr' }])).toBe('email,first_name,last_name\na@b.co,"Ann ""A"", Jr",');
+  it("reads optional kategori / tag / sumber columns", () => {
+    const r = parseContactsCsv("email,first_name,last_name,kategori,tag,sumber\na@b.co,Ann,,Magang,Mentor;Alumni,Form X");
+    expect(r.rows[0]).toEqual({ email: "a@b.co", firstName: "Ann", categories: ["Magang"], tags: ["Mentor", "Alumni"], source: "Form X" });
   });
 });
 

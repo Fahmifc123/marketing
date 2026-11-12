@@ -25,6 +25,10 @@ export interface ParsedRow {
   email: string;
   firstName?: string;
   lastName?: string;
+  /** From optional "kategori" / "tag" columns (several separated by ";"). */
+  categories?: string[];
+  tags?: string[];
+  source?: string;
 }
 
 function splitCsvLine(line: string, sep: string): string[] {
@@ -63,6 +67,10 @@ export function parseContactsCsv(text: string): { rows: ParsedRow[]; invalid: nu
   let emailCol = hasHeader ? find("email", "e-mail", "emailaddress", "alamatemail", "surel") : -1;
   const firstCol = hasHeader ? find("firstname", "first_name", "nama", "name", "namadepan", "nama lengkap", "namalengkap") : -1;
   const lastCol = hasHeader ? find("lastname", "last_name", "namabelakang") : -1;
+  const catCol = hasHeader ? find("kategori", "category", "categories") : -1;
+  const tagCol = hasHeader ? find("tag", "tags", "label") : -1;
+  const srcCol = hasHeader ? find("sumber", "source") : -1;
+  const list = (v: string | undefined) => (v ?? "").split(/[;|]/).map((x) => x.trim().slice(0, 80)).filter(Boolean);
   const body = hasHeader ? lines.slice(1) : lines;
   if (emailCol < 0) {
     const sample = splitCsvLine(body[0] ?? "", sep);
@@ -88,6 +96,9 @@ export function parseContactsCsv(text: string): { rows: ParsedRow[]; invalid: nu
       email,
       ...(firstCol >= 0 && cells[firstCol] ? { firstName: cells[firstCol].slice(0, 80) } : {}),
       ...(lastCol >= 0 && cells[lastCol] ? { lastName: cells[lastCol].slice(0, 80) } : {}),
+      ...(catCol >= 0 && list(cells[catCol]).length ? { categories: list(cells[catCol]) } : {}),
+      ...(tagCol >= 0 && list(cells[tagCol]).length ? { tags: list(cells[tagCol]) } : {}),
+      ...(srcCol >= 0 && cells[srcCol] ? { source: cells[srcCol].slice(0, 120) } : {}),
     });
   }
   return { rows, invalid, duplicates };

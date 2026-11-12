@@ -22,7 +22,7 @@ export default async function EmailDatabasePage() {
           </h1>
           <p className="mt-3 text-xl font-medium text-navy sm:text-2xl">Simpan kontak, atur kategori &amp; tag.</p>
           <p className="mt-2 text-sm text-muted sm:text-base">
-            Kontak tersimpan di Resend. Pilih kategori/tag saat mengirim di menu Email Marketing.
+            Kontak tersimpan di database Intelligo sendiri (bukan Resend). Pilih kategori/tag saat mengirim di menu Email Marketing.
           </p>
         </div>
         <EmailDatabase />
