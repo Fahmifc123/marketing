@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "domainesia-hosting": {
+      "type": "http",
+      "url": "https://mcp.intelligo.id/"
+    }
+  }
+}
