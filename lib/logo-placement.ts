@@ -68,3 +68,31 @@ export function describeLogoZone(corner: LogoCorner, width: number, height: numb
   const vertical = corner.startsWith("top") ? `${pct(z.y)} from the top edge` : `${pct(1 - z.y - z.height)} from the bottom edge`;
   return `${corner.replace("-", " ")} corner: a zone about ${pct(z.width)} of the image width and ${pct(z.height)} of the image height, ${horizontal} and ${vertical}`;
 }
+
+/** Official logo files in /public/brand/{variant}-{color}.png */
+export type LogoVariant = "horizontal" | "vertical" | "icon" | "wordmark";
+export type LogoFileColor = "color" | "navy" | "white" | "orange";
+/** "auto": full colour on light backgrounds, white on dark backgrounds. */
+export type LogoColor = "auto" | LogoFileColor;
+
+export const LOGO_VARIANTS: Array<{ id: LogoVariant; label: string }> = [
+  { id: "horizontal", label: "Horizontal" },
+  { id: "vertical", label: "Vertikal" },
+  { id: "icon", label: "Ikon" },
+  { id: "wordmark", label: "Wordmark" },
+];
+
+export const LOGO_COLORS: Array<{ id: LogoColor; label: string }> = [
+  { id: "auto", label: "Otomatis (warna / putih sesuai latar)" },
+  { id: "color", label: "Warna penuh" },
+  { id: "navy", label: "Navy" },
+  { id: "white", label: "Putih" },
+  { id: "orange", label: "Oranye" },
+];
+
+export const isLogoVariant = (v: unknown): v is LogoVariant => LOGO_VARIANTS.some((x) => x.id === v);
+export const isLogoColor = (v: unknown): v is LogoColor => LOGO_COLORS.some((x) => x.id === v);
+
+export function logoFileUrl(variant: LogoVariant, color: LogoFileColor): string {
+  return `/brand/${variant}-${color}.png`;
+}

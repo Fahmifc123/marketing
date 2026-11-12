@@ -82,7 +82,7 @@ export async function deleteHistoryItem(id: string): Promise<void> {
 
 // ---------- Brand assets ----------
 
-export type BrandAssetKey = "logo-primary" | "logo-on-dark" | "logo-prefs";
+export type BrandAssetKey = "logo-primary" | "logo-on-dark" | "logo-prefs" | "logo-prefs-v2";
 
 export async function getBrandAsset<T>(key: BrandAssetKey): Promise<T | undefined> {
   const db = await openDb();

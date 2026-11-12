@@ -1,203 +1,114 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 import type { ActiveLogo } from "@/lib/client-image";
-import { deleteBrandAsset, getBrandAsset, setBrandAsset } from "@/lib/history-store";
-import { DEFAULT_LOGO_CORNER, LOGO_CORNERS, isLogoCorner, type LogoCorner } from "@/lib/logo-placement";
-
-type LogoKind = "primary" | "onDark";
-const KEYS = { primary: "logo-primary", onDark: "logo-on-dark" } as const;
-const ACCEPTED = ["image/png", "image/webp", "image/jpeg"];
-const MAX_BYTES = 5 * 1024 * 1024;
+import { getBrandAsset, setBrandAsset } from "@/lib/history-store";
+import {
+  DEFAULT_LOGO_CORNER,
+  LOGO_COLORS,
+  LOGO_CORNERS,
+  LOGO_VARIANTS,
+  isLogoColor,
+  isLogoCorner,
+  isLogoVariant,
+  logoFileUrl,
+  type LogoColor,
+  type LogoCorner,
+  type LogoVariant,
+} from "@/lib/logo-placement";
 
 interface Prefs {
   enabled: boolean;
   corner: LogoCorner;
+  variant: LogoVariant;
+  color: LogoColor;
 }
 
-export interface BrandLogoState {
-  primary: Blob | null;
-  onDark: Blob | null;
-  enabled: boolean;
-  corner: LogoCorner;
-  available: boolean;
+const DEFAULT_PREFS: Prefs = { enabled: true, corner: DEFAULT_LOGO_CORNER, variant: "horizontal", color: "auto" };
+
+const blobCache = new Map<string, Promise<Blob>>();
+function loadLogo(url: string): Promise<Blob> {
+  let p = blobCache.get(url);
+  if (!p) {
+    p = fetch(url).then((r) => {
+      if (!r.ok) throw new Error("logo missing");
+      return r.blob();
+    });
+    p.catch(() => blobCache.delete(url));
+    blobCache.set(url, p);
+  }
+  return p;
 }
 
 /**
- * Official logo files and auto-logo preferences, saved in this browser
- * (IndexedDB). Returns the logo to composite, or null when auto-logo is off.
+ * Official Intelligo ID logos served from /brand (never uploaded by users).
+ * "auto" colour = full-colour logo on light corners, white logo on dark corners.
  */
 export function useBrandLogo() {
-  const [state, setState] = useState<BrandLogoState>({
-    primary: null,
-    onDark: null,
-    enabled: false,
-    corner: DEFAULT_LOGO_CORNER,
-    available: true,
-  });
+  const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
+  const [files, setFiles] = useState<{ primary: Blob; onDark: Blob | null } | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getBrandAsset<Blob>(KEYS.primary),
-      getBrandAsset<Blob>(KEYS.onDark),
-      getBrandAsset<Prefs>("logo-prefs"),
-    ])
-      .then(([primary, onDark, prefs]) => {
-        if (cancelled) return;
-        setState({
-          primary: primary ?? null,
-          onDark: onDark ?? null,
-          // Default to on as soon as an official logo is saved.
-          enabled: prefs ? prefs.enabled : Boolean(primary),
-          corner: prefs && isLogoCorner(prefs.corner) ? prefs.corner : DEFAULT_LOGO_CORNER,
-          available: true,
+    getBrandAsset<Partial<Prefs>>("logo-prefs-v2")
+      .then((saved) => {
+        if (cancelled || !saved) return;
+        setPrefs({
+          enabled: saved.enabled ?? true,
+          corner: isLogoCorner(saved.corner) ? saved.corner : DEFAULT_LOGO_CORNER,
+          variant: isLogoVariant(saved.variant) ? saved.variant : "horizontal",
+          color: isLogoColor(saved.color) ? saved.color : "auto",
         });
       })
-      .catch(() => !cancelled && setState((s) => ({ ...s, available: false })));
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
-  function savePrefs(next: Prefs) {
-    setBrandAsset("logo-prefs", next).catch(() => {});
+  useEffect(() => {
+    let cancelled = false;
+    const primaryColor = prefs.color === "auto" ? "color" : prefs.color;
+    Promise.all([
+      loadLogo(logoFileUrl(prefs.variant, primaryColor)),
+      prefs.color === "auto" ? loadLogo(logoFileUrl(prefs.variant, "white")) : Promise.resolve(null),
+    ])
+      .then(([primary, onDark]) => {
+        if (cancelled) return;
+        setFiles({ primary, onDark });
+        setError(false);
+      })
+      .catch(() => !cancelled && setError(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [prefs.variant, prefs.color]);
+
+  function update(patch: Partial<Prefs>) {
+    setPrefs((p) => {
+      const next = { ...p, ...patch };
+      setBrandAsset("logo-prefs-v2", next).catch(() => {});
+      return next;
+    });
   }
 
   const activeLogo: ActiveLogo | null = useMemo(
-    () => (state.enabled && state.primary ? { corner: state.corner, primary: state.primary, onDark: state.onDark } : null),
-    [state.enabled, state.primary, state.onDark, state.corner],
+    () => (prefs.enabled && files ? { corner: prefs.corner, primary: files.primary, onDark: files.onDark } : null),
+    [prefs.enabled, prefs.corner, files],
   );
 
-  return {
-    state,
-    activeLogo,
-    setEnabled(enabled: boolean) {
-      setState((s) => ({ ...s, enabled }));
-      savePrefs({ enabled, corner: state.corner });
-    },
-    setCorner(corner: LogoCorner) {
-      setState((s) => ({ ...s, corner }));
-      savePrefs({ enabled: state.enabled, corner });
-    },
-    async saveLogo(kind: LogoKind, file: File) {
-      await setBrandAsset(KEYS[kind], file);
-      setState((s) => {
-        const next = { ...s, [kind]: file as Blob };
-        if (kind === "primary" && !s.primary) {
-          next.enabled = true;
-          savePrefs({ enabled: true, corner: s.corner });
-        }
-        return next;
-      });
-    },
-    async removeLogo(kind: LogoKind) {
-      await deleteBrandAsset(KEYS[kind]);
-      setState((s) => ({ ...s, [kind]: null, ...(kind === "primary" ? { enabled: false } : {}) }));
-    },
-  };
+  return { prefs, update, activeLogo, error };
 }
 
 type BrandLogo = ReturnType<typeof useBrandLogo>;
 
-function LogoSlot({
-  label,
-  hint,
-  blob,
-  dark,
-  disabled,
-  onUpload,
-  onRemove,
-}: {
-  label: string;
-  hint: string;
-  blob: Blob | null;
-  dark?: boolean;
-  disabled?: boolean;
-  onUpload: (file: File) => Promise<string | null>;
-  onRemove: () => void;
-}) {
-  const id = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [error, setError] = useState<string | null>(null);
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
-  useEffect(() => () => {
-    if (url) URL.revokeObjectURL(url);
-  }, [url]);
-
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={`flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line p-1.5 ${
-          dark ? "bg-navy" : "bg-white"
-        }`}
-      >
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
-          <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
-        ) : (
-          <span className={`text-[10px] ${dark ? "text-white/60" : "text-muted"}`}>Belum ada</span>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-navy">{label}</p>
-        <p className="text-xs text-muted">{error ? <span className="text-danger">{error}</span> : hint}</p>
-      </div>
-      <div className="flex shrink-0 gap-1">
-        <label htmlFor={id} className={`btn-secondary cursor-pointer px-3 py-1.5 text-xs ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-          {blob ? "Ganti" : "Upload"}
-          <input
-            ref={inputRef}
-            id={id}
-            type="file"
-            accept={ACCEPTED.join(",")}
-            className="sr-only"
-            disabled={disabled}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (inputRef.current) inputRef.current.value = "";
-              if (!file) return;
-              setError(await onUpload(file));
-            }}
-          />
-        </label>
-        {blob && (
-          <button type="button" onClick={onRemove} disabled={disabled} className="btn-ghost px-2 py-1.5 text-xs text-muted">
-            Hapus
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-async function validateLogo(file: File): Promise<string | null> {
-  if (!ACCEPTED.includes(file.type)) return "Gunakan PNG (transparan), WEBP, atau JPG.";
-  if (file.size > MAX_BYTES) return "Maksimal 5 MB.";
-  try {
-    (await createImageBitmap(file)).close();
-  } catch {
-    return "File tidak dapat dibaca.";
-  }
-  return null;
-}
-
-/** "Logo resmi" controls: saved logo files, on/off, corner. */
+/** "Logo resmi" controls: on/off, version, colour, corner. Logo files come from the server. */
 export default function LogoSettings({ logo, disabled }: { logo: BrandLogo; disabled?: boolean }) {
-  const cornerId = useId();
-  const { state } = logo;
-
-  async function upload(kind: LogoKind, file: File) {
-    const problem = await validateLogo(file);
-    if (problem) return problem;
-    try {
-      await logo.saveLogo(kind, file);
-      return null;
-    } catch {
-      return "Gagal menyimpan logo di browser ini.";
-    }
-  }
+  const id = useId();
+  const { prefs } = logo;
+  const off = disabled || !prefs.enabled;
 
   return (
     <fieldset className="rounded-xl border border-line bg-canvas p-4">
@@ -206,62 +117,73 @@ export default function LogoSettings({ logo, disabled }: { logo: BrandLogo; disa
         <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-navy">
           <input
             type="checkbox"
-            checked={state.enabled && Boolean(state.primary)}
-            onChange={(e) => logo.setEnabled(e.target.checked)}
-            disabled={disabled || !state.primary}
+            checked={prefs.enabled}
+            onChange={(e) => logo.update({ enabled: e.target.checked })}
+            disabled={disabled}
             className="h-4 w-4 accent-navy"
           />
           Tempel logo resmi otomatis
         </label>
-        {state.primary && (
+        <select
+          aria-label="Posisi logo"
+          value={prefs.corner}
+          onChange={(e) => logo.update({ corner: e.target.value as LogoCorner })}
+          disabled={off}
+          className="select w-auto py-1.5 text-xs"
+        >
+          {LOGO_CORNERS.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1 text-xs leading-relaxed text-muted">
+        Logo resmi Intelligo ID dari server. AI tidak menggambar logo — pojoknya dikosongkan, lalu file logo asli ditempel persis.
+      </p>
+
+      <div className={`mt-3 space-y-3 ${off ? "opacity-50" : ""}`}>
+        <div role="radiogroup" aria-label="Versi logo" className="grid grid-cols-4 gap-1.5">
+          {LOGO_VARIANTS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="radio"
+              aria-checked={prefs.variant === v.id}
+              disabled={off}
+              onClick={() => logo.update({ variant: v.id })}
+              className={`flex flex-col items-center gap-1 rounded-lg border bg-white p-1.5 text-[10px] font-semibold transition-colors ${
+                prefs.variant === v.id ? "border-navy text-navy ring-1 ring-navy" : "border-line text-muted hover:border-navy-400"
+              }`}
+            >
+              <span className="flex h-8 w-full items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset */}
+                <img src={logoFileUrl(v.id, "color")} alt="" className="max-h-full max-w-full object-contain" />
+              </span>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor={`${id}-color`} className="text-xs font-semibold text-navy">
+            Warna
+          </label>
           <select
-            id={cornerId}
-            aria-label="Posisi logo"
-            value={state.corner}
-            onChange={(e) => logo.setCorner(e.target.value as LogoCorner)}
-            disabled={disabled || !state.enabled}
-            className="select w-auto py-1.5 text-xs"
+            id={`${id}-color`}
+            value={prefs.color}
+            onChange={(e) => logo.update({ color: e.target.value as LogoColor })}
+            disabled={off}
+            className="select flex-1 py-1.5 text-xs"
           >
-            {LOGO_CORNERS.map((c) => (
+            {LOGO_COLORS.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.label}
               </option>
             ))}
           </select>
-        )}
+        </div>
+        {logo.error && <p className="text-xs text-danger">File logo tidak bisa dimuat dari server.</p>}
       </div>
-      <p className="mt-1 text-xs leading-relaxed text-muted">
-        AI tidak menggambar logo. Area di pojok dikosongkan, lalu file logo asli ditempel persis — tidak diubah sama sekali.
-      </p>
-
-      {!state.available ? (
-        <p className="mt-3 text-xs text-danger">Penyimpanan browser tidak tersedia (mode private?).</p>
-      ) : (
-        <details className="mt-3" open={!state.primary}>
-          <summary className="cursor-pointer text-xs font-semibold text-navy-600 hover:text-navy">
-            {state.primary ? "Kelola file logo" : "Upload logo resmi (sekali saja, tersimpan di browser ini)"}
-          </summary>
-          <div className="mt-3 space-y-3">
-            <LogoSlot
-              label="Logo utama"
-              hint="Untuk latar terang. PNG transparan."
-              blob={state.primary}
-              disabled={disabled}
-              onUpload={(f) => upload("primary", f)}
-              onRemove={() => void logo.removeLogo("primary")}
-            />
-            <LogoSlot
-              label="Versi putih (opsional)"
-              hint="Dipakai otomatis kalau latar pojoknya gelap."
-              blob={state.onDark}
-              dark
-              disabled={disabled}
-              onUpload={(f) => upload("onDark", f)}
-              onRemove={() => void logo.removeLogo("onDark")}
-            />
-          </div>
-        </details>
-      )}
     </fieldset>
   );
 }
