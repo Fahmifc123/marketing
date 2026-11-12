@@ -11,6 +11,8 @@ import ImagePreview, { type PreviewStatus } from "@/components/ImagePreview";
 import PromptInput from "@/components/PromptInput";
 import LogoSettings, { useBrandLogo } from "@/components/LogoSettings";
 import ReferenceUploader, { type ReferenceImage } from "@/components/ReferenceUploader";
+import SpeakerPhotos, { type Speaker } from "@/components/SpeakerPhotos";
+import type { ContentMode } from "@/lib/speakers";
 import { base64ToBlob, copyText, createThumbnail, downloadBlob, finalizeImage } from "@/lib/client-image";
 import { isStoryPrompt } from "@/lib/content-detection";
 import { addHistoryItem, deleteHistoryItem, listHistory } from "@/lib/history-store";
@@ -39,6 +41,8 @@ interface GenerationRequest {
   settings: Settings;
   reference: ReferenceImage | null;
   override: string | null;
+  contentMode?: ContentMode;
+  speakers?: Speaker[];
 }
 
 const INITIAL_SETTINGS: Settings = {
@@ -62,6 +66,8 @@ export default function ImageGenerator() {
   const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
   const [prompt, setPrompt] = useState("");
   const [reference, setReference] = useState<ReferenceImage | null>(null);
+  const [contentMode, setContentMode] = useState<ContentMode>("general");
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
 
   const [status, setStatus] = useState<PreviewStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +154,9 @@ export default function ImageGenerator() {
             formatExplicit: settings.formatExplicit,
             hasReference,
             logoCorner,
+            contentMode,
+            speakerCount: speakers.length,
+            speakers: speakers.map((s) => ({ name: s.name, title: s.title })),
           }),
         });
         const data = (await res.json()) as PromptPreviewResponse | { ok: false; error: { message: string } };
@@ -163,7 +172,7 @@ export default function ImageGenerator() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [previewable, prompt, settings, hasReference, logoCorner]);
+  }, [previewable, prompt, settings, hasReference, logoCorner, contentMode, speakers]);
 
   function showResult(next: CreativeResult) {
     if (resultUrl.current) URL.revokeObjectURL(resultUrl.current);
@@ -210,6 +219,11 @@ export default function ImageGenerator() {
       form.set("customHeight", String(request.settings.customRatio.height));
     }
     if (request.reference) form.set("referenceImage", request.reference.file, request.reference.file.name);
+    if (request.contentMode === "class") {
+      form.set("contentMode", "class");
+      for (const sp of request.speakers ?? []) form.append("speakerPhoto", sp.file, sp.file.name);
+      form.set("speakers", JSON.stringify((request.speakers ?? []).map((sp) => ({ name: sp.name, title: sp.title }))));
+    }
     form.set("developerMode", String(devMode));
     if (activeLogo) form.set("logoCorner", activeLogo.corner);
     if (devMode && request.override !== null) form.set("promptOverride", request.override);
@@ -306,7 +320,7 @@ export default function ImageGenerator() {
   }
 
   function generateFromForm() {
-    void generate({ prompt, settings, reference, override });
+    void generate({ prompt, settings, reference, override, contentMode, speakers });
   }
 
   function regenerate() {
@@ -324,6 +338,8 @@ export default function ImageGenerator() {
     if (reference) URL.revokeObjectURL(reference.previewUrl);
     setResult(null);
     setReference(null);
+    for (const sp of speakers) URL.revokeObjectURL(sp.previewUrl);
+    setSpeakers([]);
     setPrompt("");
     setOverride(null);
     setError(null);
@@ -513,6 +529,32 @@ export default function ImageGenerator() {
               noValidate
             >
               {sharedControls}
+
+              <div>
+                <span className="label">Jenis konten</span>
+                <div role="radiogroup" aria-label="Jenis konten" className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-white p-1 text-sm font-semibold">
+                  {(
+                    [
+                      ["general", "Non-kelas"],
+                      ["class", "Kelas / Program"],
+                    ] as const
+                  ).map(([m, label]) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={contentMode === m}
+                      disabled={loading}
+                      onClick={() => setContentMode(m)}
+                      className={`rounded-md px-3 py-2 transition-colors ${contentMode === m ? "bg-navy text-white" : "text-navy hover:bg-pale"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {contentMode === "class" && <SpeakerPhotos value={speakers} onChange={setSpeakers} disabled={loading} />}
 
               <PromptInput
                 ref={promptRef}

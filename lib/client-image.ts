@@ -53,7 +53,8 @@ export async function prepareReferenceImage(file: File): Promise<File> {
     throw new ReferenceImageError("Gambar tidak dapat dibaca. Coba file lain.");
   }
 
-  const comfortableSize = REFERENCE_IMAGE.maxBytes * 0.85;
+  // Leave room for speaker photos in the same request (Vercel body limit ~4.5 MB).
+  const comfortableSize = REFERENCE_IMAGE.maxBytes * 0.6;
   if (!drawn.scaled && file.size <= comfortableSize) return file;
 
   const baseName = file.name.replace(/\.[^.]+$/, "") || "reference";
@@ -244,5 +245,47 @@ export async function copyText(text: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** The first image file in a paste event, if any. */
+export function imageFromClipboard(data: DataTransfer | null): File | null {
+  if (!data) return null;
+  for (const item of Array.from(data.items ?? [])) {
+    if (item.kind === "file" && item.type.startsWith("image/")) {
+      const f = item.getAsFile();
+      if (f) return f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}.${f.type.split("/")[1] || "png"}`, { type: f.type });
+    }
+  }
+  return null;
+}
+
+/** Downloads an image link through the server (avoids CORS and blocks private addresses). */
+export async function fetchImageFromUrl(url: string): Promise<File> {
+  const res = await fetch("/api/reference-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ReferenceImageError(data?.error?.message ?? "Gambar tidak bisa diambil dari link itu.");
+  }
+  const blob = await res.blob();
+  const name = decodeURIComponent(res.headers.get("X-Filename") ?? "") || "link-image";
+  return new File([blob], name, { type: blob.type });
+}
+
+/** Shrinks a speaker photo (max 1024px edge) so several fit in one request. */
+export async function prepareSpeakerPhoto(file: File): Promise<File> {
+  if (!(REFERENCE_IMAGE.acceptedTypes as readonly string[]).includes(file.type)) {
+    throw new ReferenceImageError("Format foto tidak didukung. Gunakan PNG, JPG, atau WEBP.");
+  }
+  try {
+    const small = await prepareStyleAnchor(file, 1024);
+    const base = file.name.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 50) || "speaker";
+    return new File([small], `${base}.${small.name.split(".").pop()}`, { type: small.type });
+  } catch {
+    throw new ReferenceImageError("Foto tidak dapat dibaca. Coba file lain.");
   }
 }

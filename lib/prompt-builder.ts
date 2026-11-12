@@ -9,6 +9,7 @@
  * authenticated users in Developer Mode.
  */
 import "server-only";
+import { classModeLines, type ContentMode, type SpeakerInfo } from "@/lib/speakers";
 
 import {
   detectAudiences,
@@ -50,6 +51,9 @@ export interface BuildPromptInput {
   campaignContext?: CampaignContext;
   /** Auto-logo: keep this corner empty for the official logo. */
   logoCorner?: LogoCorner | null;
+  /** "class": class / program promo; speaker photos are composited as-is. */
+  contentMode?: ContentMode;
+  speakers?: SpeakerInfo[];
 }
 
 export interface BriefAnalysis {
@@ -277,12 +281,16 @@ export function buildIntelligoPrompt(input: BuildPromptInput): string {
       section(
         "Reference image",
         bullet([
-          "A reference image is attached.",
+          input.speakers?.length ? "The FIRST attached image is the reference (the later ones are speaker photos)." : "A reference image is attached.",
           ...referenceIntents.map((intent) => REFERENCE_IMAGE_RULES[intent]),
           "Apply the reference only as described above; everything else follows the Intelligo ID visual system and the brief.",
         ]),
       ),
     );
+  }
+
+  if (input.contentMode === "class") {
+    parts.push(section("Class / program", bullet(classModeLines(input.speakers ?? [], hasReference ? 1 : 0))));
   }
 
   // 11. Negative constraints

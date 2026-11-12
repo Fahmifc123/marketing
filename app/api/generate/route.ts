@@ -14,6 +14,7 @@ import {
 import { isStoryPrompt } from "@/lib/content-detection";
 import { getModel, PROMPT_LIMITS, resolveFormat } from "@/lib/image-settings";
 import { isLogoCorner } from "@/lib/logo-placement";
+import { SPEAKER_LIMITS, isContentMode, parseSpeakers } from "@/lib/speakers";
 import { generateImage, logSafeError, toUserFacingError } from "@/lib/openai";
 import {
   analyzeBrief,
@@ -69,6 +70,14 @@ export async function POST(request: NextRequest) {
     const styleAnchor = carousel || metaAd ? await validateReferenceImage(form.get("styleAnchor")) : null;
     const sizeMaster = metaAd ? await validateReferenceImage(form.get("sizeMaster")) : null;
     const developerMode = form.get("developerMode") === "true";
+    const contentModeField = form.get("contentMode");
+    const contentMode = !carousel && !metaAd && isContentMode(contentModeField) ? contentModeField : "general";
+    const speakerFiles = contentMode === "class" ? form.getAll("speakerPhoto") : [];
+    if (speakerFiles.length > SPEAKER_LIMITS.max) {
+      throw new ValidationError("invalid_reference", `Maksimal ${SPEAKER_LIMITS.max} foto pembicara.`);
+    }
+    const speakerPhotos = (await Promise.all(speakerFiles.map((f) => validateReferenceImage(f)))).filter((p) => p !== null);
+    const speakers = parseSpeakers(form.get("speakers"), speakerPhotos.length);
     const logoCornerField = form.get("logoCorner");
     const logoCorner = isLogoCorner(logoCornerField) ? logoCornerField : null;
 
@@ -92,14 +101,31 @@ export async function POST(request: NextRequest) {
       developerMode,
       promptOverride,
       logoCorner,
+      contentMode,
+      speakerPhotos,
+      speakers,
     };
   } catch (err) {
     if (err instanceof ValidationError) return errorResponse(400, err.code, err.message);
     return errorResponse(400, "invalid_request", "Request tidak valid. Coba lagi.");
   }
 
-  const { apiKey, prompt, settings, reference, carousel, metaAd, styleAnchor, sizeMaster, developerMode, promptOverride, logoCorner } =
-    parsed;
+  const {
+    apiKey,
+    prompt,
+    settings,
+    reference,
+    carousel,
+    metaAd,
+    styleAnchor,
+    sizeMaster,
+    developerMode,
+    promptOverride,
+    logoCorner,
+    contentMode,
+    speakerPhotos,
+    speakers,
+  } = parsed;
   const model = getModel(settings.model)!;
   const format = resolveFormat({
     formatId: settings.formatId,
@@ -137,10 +163,12 @@ export async function POST(request: NextRequest) {
           aspectRatio: format,
           referenceImage: reference ? { name: reference.displayName } : null,
           logoCorner,
+          contentMode,
+          speakers,
         }));
 
   // Order matters: the prompts refer to "the first / second attached image".
-  const references = [sizeMaster, styleAnchor, reference].filter((r) => r !== null);
+  const references = [sizeMaster, styleAnchor, reference, ...speakerPhotos].filter((r) => r !== null);
   const slide = carousel?.plan.slides.find((s) => s.index === carousel.slideIndex);
 
   const startedAt = Date.now();

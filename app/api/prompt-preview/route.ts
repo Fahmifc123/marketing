@@ -4,6 +4,7 @@ import { ValidationError, errorResponse, guardRequest, validatePrompt, validateS
 import { isStoryPrompt } from "@/lib/content-detection";
 import { resolveFormat } from "@/lib/image-settings";
 import { isLogoCorner } from "@/lib/logo-placement";
+import { SPEAKER_LIMITS, isContentMode, parseSpeakers } from "@/lib/speakers";
 import { analyzeBrief, buildIntelligoPrompt } from "@/lib/prompt-builder";
 import type { PromptPreviewResponse } from "@/types/generation";
 
@@ -47,6 +48,8 @@ export async function POST(request: NextRequest) {
       aspectRatio: format,
       referenceImage: body.hasReference === true ? {} : null,
       logoCorner: isLogoCorner(body.logoCorner) ? body.logoCorner : null,
+      contentMode: isContentMode(body.contentMode) ? body.contentMode : "general",
+      speakers: isContentMode(body.contentMode) && body.contentMode === "class" ? parseSpeakers(JSON.stringify(body.speakers ?? []), Math.min(Number(body.speakerCount) || 0, SPEAKER_LIMITS.max)) : [],
     });
     return NextResponse.json<PromptPreviewResponse>(
       { ok: true, prompt: internalPrompt, format, contentTypes: analyzeBrief(prompt).contentTypes },

@@ -1,8 +1,8 @@
 "use client";
 
-import { useId, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 
-import { prepareReferenceImage, ReferenceImageError } from "@/lib/client-image";
+import { fetchImageFromUrl, imageFromClipboard, prepareReferenceImage, ReferenceImageError } from "@/lib/client-image";
 import { REFERENCE_IMAGE } from "@/lib/image-settings";
 
 export interface ReferenceImage {
@@ -25,6 +25,7 @@ export default function ReferenceUploader({ value, onChange, disabled }: Props) 
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [link, setLink] = useState("");
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
@@ -39,6 +40,36 @@ export default function ReferenceUploader({ value, onChange, disabled }: Props) 
     } finally {
       setProcessing(false);
       if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  // Paste a copied image anywhere on the page (Ctrl/Cmd+V). Text pastes are left alone.
+  useEffect(() => {
+    if (disabled) return;
+    function onPaste(e: ClipboardEvent) {
+      if ((e.target as Element | null)?.closest?.("[data-own-paste]")) return;
+      const file = imageFromClipboard(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      void handleFile(file);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  });
+
+  async function fromLink() {
+    const url = link.trim();
+    if (!url) return;
+    setError(null);
+    setProcessing(true);
+    try {
+      const file = await fetchImageFromUrl(url);
+      setLink("");
+      setProcessing(false);
+      await handleFile(file);
+    } catch (err) {
+      setError(err instanceof ReferenceImageError ? err.message : "Gambar tidak bisa diambil dari link itu.");
+      setProcessing(false);
     }
   }
 
@@ -94,7 +125,7 @@ export default function ReferenceUploader({ value, onChange, disabled }: Props) 
           <span aria-hidden="true" className="text-lg leading-none text-orange">
             +
           </span>
-          {processing ? "Preparing image…" : "Upload Reference"}
+          {processing ? "Preparing image…" : "Upload / paste (Ctrl+V) reference"}
           <input
             ref={inputRef}
             id={inputId}
@@ -107,6 +138,30 @@ export default function ReferenceUploader({ value, onChange, disabled }: Props) 
             className="sr-only"
           />
         </label>
+      )}
+
+      {!value && (
+        <div className="mt-2 flex gap-2">
+          <input
+            type="url"
+            inputMode="url"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void fromLink();
+              }
+            }}
+            placeholder="…atau tempel link gambar https://"
+            aria-label="Link gambar referensi"
+            disabled={disabled || processing}
+            className="field min-w-0 flex-1 py-2 text-sm"
+          />
+          <button type="button" onClick={() => void fromLink()} disabled={disabled || processing || !link.trim()} className="btn-secondary px-4 text-sm">
+            Ambil
+          </button>
+        </div>
       )}
 
       {error ? (
