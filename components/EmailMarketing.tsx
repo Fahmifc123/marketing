@@ -89,6 +89,7 @@ export default function EmailMarketing() {
 
   // Draft
   const [draft, setDraft] = useState<EmailDraft | null>(null);
+  const [mode, setMode] = useState<"ai" | "manual">("ai");
   const [view, setView] = useState<"desktop" | "mobile">("desktop");
   const [template, setTemplate] = useState<EmailTemplateId>("classic");
   const [assets, setAssets] = useState<EmailAsset[]>([]);
@@ -249,11 +250,43 @@ export default function EmailMarketing() {
             noValidate
             onSubmit={(e) => {
               e.preventDefault();
-              void generate();
+              if (mode === "ai") void generate();
             }}
           >
-            <p className="eyebrow">1 · Brief</p>
-            <div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="eyebrow">1 · {mode === "ai" ? "Brief" : "Mulai"}</p>
+              <div role="radiogroup" aria-label="Mode penulisan" className="inline-flex rounded-lg border border-line bg-white p-1 text-sm font-semibold">
+                {(
+                  [
+                    ["ai", "Dibantu AI"],
+                    ["manual", "Manual"],
+                  ] as const
+                ).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === m}
+                    onClick={() => {
+                      setMode(m);
+                      setGenError(null);
+                      if (m === "manual" && !draft) setDraft(EMPTY_DRAFT);
+                    }}
+                    className={`rounded-md px-3 py-1.5 transition-colors ${mode === m ? "bg-navy text-white" : "text-navy hover:bg-pale"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {mode === "manual" && (
+              <p className="text-sm text-muted">
+                Tulis sendiri seperti di Mailchimp: isi subject, judul, paragraf dan tombol di editor di bawah, pilih template, upload gambar/file,
+                lalu cek preview. Tidak memakai AI.
+              </p>
+            )}
+            {mode === "ai" && (
+              <div>
               <label htmlFor={`${id}-key`} className="label">
                 OpenAI API Key{serverKey && <span className="font-normal text-muted"> (opsional)</span>}
               </label>
@@ -279,8 +312,10 @@ export default function EmailMarketing() {
                 </button>
               </div>
               <p className="mt-1.5 text-xs text-muted">Hanya untuk menulis draft. Disimpan di memori tab ini saja.</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+              </div>
+            )}
+            <div className={`grid gap-4 ${mode === "ai" ? "sm:grid-cols-2" : ""}`}>
+              {mode === "ai" && (
               <div>
                 <label htmlFor={`${id}-type`} className="label">
                   Jenis email
@@ -293,6 +328,7 @@ export default function EmailMarketing() {
                   ))}
                 </select>
               </div>
+              )}
               <div>
                 <label htmlFor={`${id}-cta`} className="label">
                   Link tombol CTA <span className="font-normal tracking-normal text-muted normal-case">(opsional)</span>
@@ -307,6 +343,8 @@ export default function EmailMarketing() {
                 />
               </div>
             </div>
+            {mode === "ai" && (
+            <>
             <div>
               <label htmlFor={`${id}-brief`} className="label">
                 Apa isi emailnya?
@@ -338,11 +376,20 @@ export default function EmailMarketing() {
                 {generating ? "MENULIS…" : draft ? "TULIS ULANG DRAFT" : "BUAT DRAFT EMAIL"}
               </button>
               {!draft && (
-                <button type="button" onClick={() => setDraft(EMPTY_DRAFT)} className="btn-secondary h-12">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("manual");
+                    setDraft(EMPTY_DRAFT);
+                  }}
+                  className="btn-secondary h-12"
+                >
                   Tulis manual
                 </button>
               )}
             </div>
+            </>
+            )}
           </form>
 
           {draft && (
