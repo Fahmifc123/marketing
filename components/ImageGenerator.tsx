@@ -32,6 +32,7 @@ import type {
   PromptPreviewResponse,
 } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
+import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface GenerationRequest {
   prompt: string;
@@ -57,6 +58,7 @@ function newId() {
 export default function ImageGenerator() {
   // The API key lives only in this component's memory. It is never persisted.
   const [apiKey, setApiKey] = useState("");
+  const serverKey = useServerApiKey();
   const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
   const [prompt, setPrompt] = useState("");
   const [reference, setReference] = useState<ReferenceImage | null>(null);
@@ -174,8 +176,8 @@ export default function ImageGenerator() {
 
     const errors: typeof fieldErrors = {};
     const key = apiKey.trim();
-    if (!key) errors.apiKey = "Masukkan OpenAI API key terlebih dahulu.";
-    else if (!/^sk-\S{16,}$/.test(key)) errors.apiKey = "API key tidak valid. Periksa kembali API key kamu.";
+    const keyProblem = apiKeyProblem(key, serverKey);
+    if (keyProblem) errors.apiKey = keyProblem;
     if (request.prompt.trim().length < PROMPT_LIMITS.minLength) errors.prompt = "Tulis dulu apa yang ingin kamu buat.";
     setFieldErrors(errors);
     if (errors.apiKey) {
@@ -394,6 +396,7 @@ export default function ImageGenerator() {
           if (fieldErrors.apiKey) setFieldErrors((f) => ({ ...f, apiKey: undefined }));
         }}
         apiKeyError={fieldErrors.apiKey}
+        serverKey={serverKey}
         settings={settings}
         onSettingsChange={setSettings}
         autoStory={mode === "single" && autoStory}

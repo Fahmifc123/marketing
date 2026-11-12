@@ -14,6 +14,7 @@ import {
   type MetaCopyResponse,
   type MetaCtaButton,
 } from "@/lib/meta-copy";
+import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
   apiKey: string;
@@ -62,10 +63,13 @@ export default function MetaAdCopy({ apiKey, input, onApiKeyError, disabled }: P
   const issues = copy && !stale ? verifyMetaAdCopy(copy, copySource(input)) : [];
   const issuesFor = (field: string) => issues.filter((i) => i.field === field && i.severity === "error");
 
+  const serverKey = useServerApiKey();
+
   async function generate() {
     const key = apiKey.trim();
-    if (!key) {
-      onApiKeyError("Masukkan OpenAI API key terlebih dahulu.");
+    const problem = apiKeyProblem(key, serverKey);
+    if (problem) {
+      onApiKeyError(problem);
       return;
     }
     setLoading(true);

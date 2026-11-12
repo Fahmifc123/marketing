@@ -14,6 +14,7 @@ import {
   type EmailIssue,
   type EmailType,
 } from "@/lib/email-content";
+import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Status {
   ready: boolean;
@@ -137,9 +138,12 @@ export default function EmailMarketing() {
     setBroadcastDone(null);
   }
 
+  const serverKey = useServerApiKey();
+
   async function generate() {
-    if (!apiKey.trim()) {
-      setGenError("Masukkan OpenAI API key terlebih dahulu.");
+    const keyProblem = apiKeyProblem(apiKey, serverKey);
+    if (keyProblem) {
+      setGenError(keyProblem);
       return;
     }
     setGenerating(true);
@@ -251,7 +255,7 @@ export default function EmailMarketing() {
             <p className="eyebrow">1 · Brief</p>
             <div>
               <label htmlFor={`${id}-key`} className="label">
-                OpenAI API Key
+                OpenAI API Key{serverKey && <span className="font-normal text-muted"> (opsional)</span>}
               </label>
               <div className="relative">
                 <input
@@ -259,7 +263,7 @@ export default function EmailMarketing() {
                   type={showKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-••••••••••••••••••••••••"
+                  placeholder={serverKey ? "Kosongkan — memakai API key server" : "sk-••••••••••••••••••••••••"}
                   autoComplete="off"
                   spellCheck={false}
                   data-1p-ignore

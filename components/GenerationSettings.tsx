@@ -17,6 +17,8 @@ interface Props {
   apiKey: string;
   onApiKeyChange: (value: string) => void;
   apiKeyError?: string | null;
+  /** Server has OPENAI_API_KEY, so typing a key is optional. */
+  serverKey?: boolean;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   autoStory: boolean;
@@ -26,7 +28,7 @@ interface Props {
 }
 
 const GenerationSettings = forwardRef<HTMLInputElement, Props>(function GenerationSettings(
-  { apiKey, onApiKeyChange, apiKeyError, settings, onSettingsChange, autoStory, showFormat = true, disabled },
+  { apiKey, onApiKeyChange, apiKeyError, serverKey = false, settings, onSettingsChange, autoStory, showFormat = true, disabled },
   apiKeyRef,
 ) {
   const ids = {
@@ -56,7 +58,7 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
     <div className="space-y-5">
       <div>
         <label htmlFor={ids.key} className="label">
-          OpenAI API Key
+          OpenAI API Key{serverKey && <span className="font-normal text-muted"> (opsional)</span>}
         </label>
         <div className="relative">
           <input
@@ -65,7 +67,7 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
             type={showKey ? "text" : "password"}
             value={apiKey}
             onChange={(e) => onApiKeyChange(e.target.value)}
-            placeholder="sk-••••••••••••••••••••••••"
+            placeholder={serverKey ? "Kosongkan — memakai API key server" : "sk-••••••••••••••••••••••••"}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -92,7 +94,9 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
           </p>
         )}
         <p id={ids.keyHelp} className="mt-1.5 text-xs leading-relaxed text-muted">
-          Disimpan hanya di memori tab ini — tidak disimpan, tidak dicatat, dan hilang saat logout atau refresh.
+          {serverKey
+            ? "API key server sudah terpasang — kolom ini boleh dikosongkan. Isi hanya jika ingin memakai key sendiri (disimpan di memori tab ini saja)."
+            : "Disimpan hanya di memori tab ini — tidak disimpan, tidak dicatat, dan hilang saat logout atau refresh."}
         </p>
       </div>
 

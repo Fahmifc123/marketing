@@ -30,6 +30,7 @@ import { createZip } from "@/lib/zip";
 import type { SlideJobStatus } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
+import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
   apiKey: string;
@@ -316,14 +317,12 @@ export default function MetaAdsGenerator({
     };
   }, []);
 
+  const serverKey = useServerApiKey();
+
   function validateKey(): boolean {
-    const k = apiKey.trim();
-    if (!k) {
-      onApiKeyError("Masukkan OpenAI API key terlebih dahulu.");
-      return false;
-    }
-    if (!/^sk-\S{16,}$/.test(k)) {
-      onApiKeyError("API key tidak valid. Periksa kembali API key kamu.");
+    const problem = apiKeyProblem(apiKey, serverKey);
+    if (problem) {
+      onApiKeyError(problem);
       return false;
     }
     return true;

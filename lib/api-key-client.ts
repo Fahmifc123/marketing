@@ -1,3 +1,5 @@
+"use client";
+
 /** Browser helpers for the OpenAI key: the user's own key is optional when the server has one. */
 import { useEffect, useState } from "react";
 

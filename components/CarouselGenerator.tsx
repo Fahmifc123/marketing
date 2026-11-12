@@ -23,6 +23,7 @@ import { createZip } from "@/lib/zip";
 import type { CarouselPlan, CarouselPlanResponse } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
+import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
   apiKey: string;
@@ -111,14 +112,12 @@ export default function CarouselGenerator({
     };
   }, []);
 
+  const serverKey = useServerApiKey();
+
   function validateInputs(): boolean {
-    const key = apiKey.trim();
-    if (!key) {
-      onApiKeyError("Masukkan OpenAI API key terlebih dahulu.");
-      return false;
-    }
-    if (!/^sk-\S{16,}$/.test(key)) {
-      onApiKeyError("API key tidak valid. Periksa kembali API key kamu.");
+    const keyProblem = apiKeyProblem(apiKey, serverKey);
+    if (keyProblem) {
+      onApiKeyError(keyProblem);
       return false;
     }
     if (settings.formatId === "custom" && !isValidCustomRatio(settings.customRatio)) {
