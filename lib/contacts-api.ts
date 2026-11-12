@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { errorResponse, guardRequest } from "@/lib/api";
 import { isEmail, type GroupType, type ParsedRow } from "@/lib/contacts";
 import { StoreConfigError, StoreInputError } from "@/lib/contact-store";
-import { resendErrorMessage } from "@/lib/resend-server";
+import { EmailConfigError, ResendRequestError, resendErrorMessage } from "@/lib/resend-server";
 
 export class BadInput extends Error {}
 
@@ -27,12 +27,12 @@ export async function handle(request: NextRequest, fn: (body: Record<string, unk
   } catch (err) {
     if (err instanceof BadInput || err instanceof StoreInputError) return errorResponse(400, "invalid_request", err.message);
     if (err instanceof StoreConfigError) return errorResponse(503, "store_not_configured", err.message);
-    if ((err as Error)?.name?.startsWith("Blob")) {
-      console.error("[contacts] blob error", (err as Error).name);
-      return errorResponse(502, "store_failed", "Gagal mengakses database kontak. Coba lagi.");
+    console.error("[contacts] failed", request.method, request.nextUrl.pathname, (err as Error)?.name, String((err as Error)?.message).slice(0, 200));
+    if (err instanceof EmailConfigError || err instanceof ResendRequestError) {
+      const { status, code, message } = resendErrorMessage(err);
+      return errorResponse(status, code, message);
     }
-    const { status, code, message } = resendErrorMessage(err);
-    return errorResponse(status, code, message);
+    return errorResponse(502, "store_failed", "Gagal menyimpan ke database kontak. Coba lagi.");
   }
 }
 

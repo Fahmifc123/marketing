@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const mem: { body: string | null; etag: number } = { body: null, etag: 0 };
+const mem: { body: string | null; etag: number; badEtag?: boolean } = { body: null, etag: 0 };
 vi.mock("@vercel/blob", () => {
   class BlobPreconditionFailedError extends Error {}
   return {
     BlobPreconditionFailedError,
     get: async () => (mem.body === null ? null : { stream: new Blob([mem.body]).stream(), blob: { etag: String(mem.etag) } }),
     put: async (_p: string, body: string, o: { ifMatch?: string }) => {
-      if (o.ifMatch && o.ifMatch !== String(mem.etag)) throw new BlobPreconditionFailedError();
+      if (o.ifMatch && (mem.badEtag || o.ifMatch !== String(mem.etag))) throw new BlobPreconditionFailedError();
       mem.body = body;
       mem.etag++;
     },
@@ -20,6 +20,7 @@ import * as store from "@/lib/contact-store";
 beforeEach(() => {
   mem.body = null;
   mem.etag = 0;
+  mem.badEtag = false;
   vi.stubEnv("DATA_BLOB_READ_WRITE_TOKEN", "x");
 });
 
@@ -58,6 +59,13 @@ describe("contact store", () => {
     const db = await store.readDb();
     expect(db.groups).toEqual([]);
     expect(db.contacts[0].groups).toEqual([]);
+  });
+
+  it("still saves when the conditional write keeps failing (ETag mismatch)", async () => {
+    await store.importContacts([{ email: "a@x.com" }], [], "csv");
+    mem.badEtag = true;
+    await store.addContact({ email: "b@x.com", groupIds: [] });
+    expect((await store.readDb()).contacts.map((c) => c.email).sort()).toEqual(["a@x.com", "b@x.com"]);
   });
 
   it("explains when storage is not connected", async () => {

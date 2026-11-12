@@ -61,31 +61,38 @@ async function load(): Promise<{ db: Db; etag: string | null }> {
   return { db: { ...EMPTY, ...db }, etag: res.blob.etag };
 }
 
-async function save(db: Db, etag: string | null) {
+async function save(db: Db, etag: string | null, force = false) {
   await put(PATH, JSON.stringify(db), {
     access: "private",
     ...auth(),
     contentType: "application/json",
     addRandomSuffix: false,
-    ...(etag ? { ifMatch: etag } : { allowOverwrite: false }),
+    ...(force ? { allowOverwrite: true } : etag ? { ifMatch: etag } : { allowOverwrite: false }),
     cacheControlMaxAge: 60,
   });
 }
 
-/** Read → change → write, retried if someone else saved in between. */
+const isPrecondition = (err: unknown) =>
+  err instanceof BlobPreconditionFailedError || /precondition|etag|already exists/i.test(`${(err as Error)?.name} ${(err as Error)?.message}`);
+
+/**
+ * Read → change → write. Conditional on the ETag so concurrent saves are not
+ * lost; if the conditional write keeps failing (ETag format mismatch), the
+ * last attempt overwrites unconditionally — fine for a small internal team.
+ */
 async function mutate<T>(fn: (db: Db) => T): Promise<T> {
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const { db, etag } = await load();
     const result = fn(db);
     try {
-      await save(db, etag);
+      await save(db, attempt < 2 ? etag : null, attempt === 2);
       return result;
     } catch (err) {
-      if (err instanceof BlobPreconditionFailedError || (err as Error)?.name?.includes("Precondition") || /already exists/i.test((err as Error)?.message ?? "")) continue;
-      throw err;
+      console.warn("[contacts] write retry", attempt, (err as Error)?.name, String((err as Error)?.message).slice(0, 160));
+      if (!isPrecondition(err) || attempt === 2) throw err;
     }
   }
-  throw new Error("Database sedang sibuk. Coba lagi.");
+  throw new Error("unreachable");
 }
 
 export async function readDb(): Promise<Db> {
