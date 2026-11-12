@@ -212,3 +212,38 @@ export async function sendToRecipients(opts: {
   }
   return { sent, failed: 0, error: null };
 }
+
+export interface EmailQuota {
+  dailyUsed: number;
+  /** null = no daily cap (paid plans). */
+  dailyLimit: number | null;
+  dailyResetsAt: string;
+  monthlyUsed: number;
+  monthlyLimit: number;
+  monthlyResetsAt: string;
+}
+
+/** Sending quota of the Resend plan (null if Resend cannot be reached). */
+export async function emailQuota(): Promise<EmailQuota | null> {
+  try {
+    const { resend } = client();
+    const u = unwrap(await resend.usage.get());
+    return {
+      dailyUsed: u.emails.daily.used,
+      dailyLimit: u.emails.daily.limit,
+      dailyResetsAt: u.emails.daily.resets_at,
+      monthlyUsed: u.emails.monthly.used,
+      monthlyLimit: u.emails.monthly.limit,
+      monthlyResetsAt: u.emails.monthly.resets_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** How many more emails can go out right now. */
+export function remainingQuota(q: EmailQuota | null): number | null {
+  if (!q) return null;
+  const monthly = q.monthlyLimit - q.monthlyUsed;
+  return Math.max(0, q.dailyLimit === null ? monthly : Math.min(monthly, q.dailyLimit - q.dailyUsed));
+}

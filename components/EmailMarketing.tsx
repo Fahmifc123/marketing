@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import EmailAssetsPanel, { TemplatePicker } from "@/components/EmailAssetsPanel";
 import type { EmailAsset, EmailDesign, EmailTemplateId } from "@/lib/email-assets";
+import QuotaNotice, { type QuotaInfo } from "@/components/QuotaNotice";
 import RecipientPicker, { type PreparedAudience } from "@/components/RecipientPicker";
 import { api } from "@/lib/email-api-client";
 import {
@@ -81,6 +82,12 @@ export default function EmailMarketing() {
 
   // Broadcast
   const [segment, setSegment] = useState<PreparedAudience | null>(null);
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const loadQuota = () => {
+    api<QuotaInfo>("/api/email/quota")
+      .then(setQuota)
+      .catch(() => {});
+  };
   const [confirmCount, setConfirmCount] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
@@ -89,6 +96,7 @@ export default function EmailMarketing() {
 
   useEffect(() => {
     let cancelled = false;
+    loadQuota();
     api<Status & { ok: true }>("/api/email/status")
       .then((s) => !cancelled && setStatus(s))
       .catch(() => !cancelled && setStatus({ ready: false, from: null, replyTo: null }));
@@ -175,6 +183,7 @@ export default function EmailMarketing() {
         }),
       });
       setBroadcastDone({ sent: data.sent, failed: data.failed, recipients: data.recipients, error: data.error });
+      loadQuota();
       setConfirmCount("");
       setAcknowledged(false);
     } catch (err) {
@@ -540,6 +549,7 @@ export default function EmailMarketing() {
                   setBroadcastDone(null);
                 }}
               />
+              <QuotaNotice info={quota} recipients={segment?.recipients ?? null} />
               {(
                 <>
                   {segment && (
