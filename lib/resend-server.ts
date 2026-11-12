@@ -114,7 +114,7 @@ export async function countSegmentRecipients(segmentId: string): Promise<{ recip
 
 export async function listSegments(): Promise<SegmentSummary[]> {
   const { resend } = client();
-  const segments = unwrap(await resend.segments.list({ limit: 100 })).data;
+  const segments = unwrap(await resend.segments.list({ limit: 100 })).data.filter((s) => !s.name.startsWith("[Kirim] "));
   return Promise.all(
     segments.map(async (s) => ({ id: s.id, name: s.name, ...(await countSegmentRecipients(s.id)) })),
   );

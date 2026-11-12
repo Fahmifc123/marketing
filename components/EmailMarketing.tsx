@@ -4,6 +4,8 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import EmailAssetsPanel, { TemplatePicker } from "@/components/EmailAssetsPanel";
 import type { EmailAsset, EmailDesign, EmailTemplateId } from "@/lib/email-assets";
+import RecipientPicker, { type PreparedAudience } from "@/components/RecipientPicker";
+import { api } from "@/lib/email-api-client";
 import {
   EMAIL_LIMITS,
   EMAIL_TYPES,
@@ -21,15 +23,6 @@ interface Status {
   replyTo: string | null;
 }
 
-interface Segment {
-  id: string;
-  name: string;
-  recipients: number;
-  capped: boolean;
-}
-
-type ApiError = { ok: false; error: { code: string; message: string } };
-
 const EMPTY_DRAFT: EmailDraft = {
   subject: "",
   preheader: "",
@@ -38,17 +31,6 @@ const EMPTY_DRAFT: EmailDraft = {
   ctaLabel: "",
   closing: "Salam hangat,\nTim Intelligo ID",
 };
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  const data = (await res.json().catch(() => null)) as (T & { ok: true }) | ApiError | null;
-  if (!data) throw new Error("Server tidak merespons dengan benar. Coba lagi.");
-  if (!data.ok) {
-    if (data.error.code === "unauthorized") window.location.replace("/login");
-    throw Object.assign(new Error(data.error.message), { code: data.error.code });
-  }
-  return data;
-}
 
 function Counter({ value, limit }: { value: string; limit: number }) {
   return (
@@ -98,9 +80,7 @@ export default function EmailMarketing() {
   const [testError, setTestError] = useState<string | null>(null);
 
   // Broadcast
-  const [segments, setSegments] = useState<Segment[] | null>(null);
-  const [segmentsError, setSegmentsError] = useState<string | null>(null);
-  const [segmentId, setSegmentId] = useState("");
+  const [segment, setSegment] = useState<PreparedAudience | null>(null);
   const [confirmCount, setConfirmCount] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
@@ -124,7 +104,6 @@ export default function EmailMarketing() {
   const design: EmailDesign = useMemo(() => ({ template, assets }), [template, assets]);
   const canonical = draft ? canonicalEmail(draft, ctaUrl.trim(), design) : "";
   const testValid = Boolean(testResult && testResult.canonical === canonical);
-  const segment = segments?.find((s) => s.id === segmentId);
   const previewHtml = useMemo(
     () => (draft ? renderEmailHtml(draft, { ctaUrl: ctaUrl.trim(), mode: "preview", design }) : ""),
     [draft, ctaUrl, design],
@@ -174,16 +153,6 @@ export default function EmailMarketing() {
     }
   }
 
-  async function loadSegments() {
-    setSegmentsError(null);
-    try {
-      const data = await api<{ segments: Segment[] }>("/api/email/segments");
-      setSegments(data.segments);
-    } catch (err) {
-      setSegmentsError((err as Error).message);
-    }
-  }
-
   async function broadcast() {
     if (!draft || !testResult || !segment) return;
     setBroadcasting(true);
@@ -195,7 +164,7 @@ export default function EmailMarketing() {
         body: JSON.stringify({
           draft,
           ctaUrl: ctaUrl.trim(),
-          segmentId,
+          segmentId: segment.id,
           template,
           assets,
           testToken: testResult.token,
@@ -208,7 +177,7 @@ export default function EmailMarketing() {
       setAcknowledged(false);
     } catch (err) {
       setBroadcastError((err as Error).message);
-      if ((err as { code?: string }).code === "confirm_mismatch") void loadSegments();
+      if ((err as { code?: string }).code === "confirm_mismatch") setSegment(null);
     } finally {
       setBroadcasting(false);
     }
@@ -556,42 +525,22 @@ export default function EmailMarketing() {
 
           {draft && (
             <section aria-labelledby={`${id}-bc`} className="panel space-y-4 border-orange/40 p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-2">
-                <p id={`${id}-bc`} className="eyebrow">
-                  4 · Broadcast ke Segment
-                </p>
-                <button type="button" onClick={() => void loadSegments()} disabled={!status?.ready} className="btn-ghost px-2 py-1 text-xs">
-                  {segments ? "Muat ulang" : "Muat segment"}
-                </button>
-              </div>
-              {segmentsError && <p role="alert" className="text-sm text-danger">{segmentsError}</p>}
-              {segments && segments.length === 0 && (
-                <p className="text-sm text-muted">Belum ada Segment di Resend. Buat segment & tambah kontak di dashboard Resend (Audience).</p>
-              )}
-              {segments && segments.length > 0 && (
+              <p id={`${id}-bc`} className="eyebrow">
+                4 · Kirim ke penerima
+              </p>
+              <RecipientPicker
+                label={draft.subject || "Email"}
+                disabled={!status?.ready || broadcasting}
+                value={segment}
+                onChange={(a) => {
+                  setSegment(a);
+                  setConfirmCount("");
+                  setAcknowledged(false);
+                  setBroadcastDone(null);
+                }}
+              />
+              {(
                 <>
-                  <div>
-                    <label htmlFor={`${id}-seg`} className="label">
-                      Penerima
-                    </label>
-                    <select
-                      id={`${id}-seg`}
-                      value={segmentId}
-                      onChange={(e) => {
-                        setSegmentId(e.target.value);
-                        setConfirmCount("");
-                        setAcknowledged(false);
-                      }}
-                      className="select"
-                    >
-                      <option value="">Pilih segment…</option>
-                      {segments.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} — {s.capped ? `${s.recipients}+` : s.recipients} penerima
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   {segment && (
                     <div className="space-y-3 rounded-lg bg-pale/60 p-4 text-sm text-navy">
                       {segment.capped ? (

@@ -5,7 +5,7 @@
 export type ModuleStatus = "active" | "coming-soon";
 
 export interface WorkspaceModule {
-  id: "ai-image" | "email" | "content" | "campaign" | "assets";
+  id: "ai-image" | "email" | "email-db" | "content" | "campaign" | "assets";
   label: string;
   href: string;
   status: ModuleStatus;
@@ -26,6 +26,13 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
     href: "/dashboard/email",
     status: "active",
     description: "Email marketing via Resend: draft, test send and broadcast to segments.",
+  },
+  {
+    id: "email-db",
+    label: "DATABASE EMAIL",
+    href: "/dashboard/email/database",
+    status: "active",
+    description: "Kontak email dengan kategori & tag, import CSV.",
   },
   {
     id: "content",
