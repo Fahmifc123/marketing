@@ -62,6 +62,7 @@ describe("contact store", () => {
 
   it("explains when storage is not connected", async () => {
     vi.stubEnv("DATA_BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("DATA_STORE_ID", "");
     await expect(store.readDb()).rejects.toBeInstanceOf(store.StoreConfigError);
   });
 });

@@ -1,6 +1,7 @@
 /**
  * Our own email database: contacts, categories and tags in one JSON document
- * in a PRIVATE Vercel Blob store (token: DATA_BLOB_READ_WRITE_TOKEN).
+ * in a PRIVATE Vercel Blob store. Auth: Vercel OIDC with DATA_STORE_ID (set
+ * when the store is connected with prefix DATA), or DATA_BLOB_READ_WRITE_TOKEN.
  * Resend is only used to send. Writes use the blob ETag (ifMatch) so two
  * people saving at once never overwrite each other silently.
  */
@@ -40,18 +41,20 @@ interface Db {
 
 const EMPTY: Db = { version: 1, groups: [], contacts: [] };
 
-function token(): string {
-  const t = process.env.DATA_BLOB_READ_WRITE_TOKEN?.trim();
-  if (!t) throw new StoreConfigError("Storage database belum disambungkan (DATA_BLOB_READ_WRITE_TOKEN).");
-  return t;
+function auth(): { token: string } | { storeId: string } {
+  const token = process.env.DATA_BLOB_READ_WRITE_TOKEN?.trim();
+  if (token) return { token };
+  const storeId = process.env.DATA_STORE_ID?.trim();
+  if (storeId) return { storeId };
+  throw new StoreConfigError("Storage database belum disambungkan (DATA_STORE_ID).");
 }
 
 export function storeReady(): boolean {
-  return Boolean(process.env.DATA_BLOB_READ_WRITE_TOKEN?.trim());
+  return Boolean(process.env.DATA_BLOB_READ_WRITE_TOKEN?.trim() || process.env.DATA_STORE_ID?.trim());
 }
 
 async function load(): Promise<{ db: Db; etag: string | null }> {
-  const res = await get(PATH, { access: "private", token: token(), useCache: false });
+  const res = await get(PATH, { access: "private", ...auth(), useCache: false });
   if (!res) return { db: structuredClone(EMPTY), etag: null };
   const text = await new Response(res.stream).text();
   const db = JSON.parse(text) as Db;
@@ -61,7 +64,7 @@ async function load(): Promise<{ db: Db; etag: string | null }> {
 async function save(db: Db, etag: string | null) {
   await put(PATH, JSON.stringify(db), {
     access: "private",
-    token: token(),
+    ...auth(),
     contentType: "application/json",
     addRandomSuffix: false,
     ...(etag ? { ifMatch: etag } : { allowOverwrite: false }),
