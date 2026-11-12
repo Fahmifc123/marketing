@@ -4,7 +4,7 @@ import {
   ValidationError,
   errorResponse,
   guardRequest,
-  validateApiKey,
+  resolveApiKey,
   validateCarouselSlide,
   validateMetaAdField,
   validatePrompt,
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   let parsed;
   try {
-    const apiKey = validateApiKey(form.get("apiKey"));
+    const apiKey = resolveApiKey(form.get("apiKey"));
     const metaAd = validateMetaAdField(form.get("metaAd"));
     // Meta Ads cards carry their (longer) pasted prompt inside `metaAd`.
     const prompt = metaAd ? metaAd.slidePrompt : validatePrompt(form.get("prompt"));

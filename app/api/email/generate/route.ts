@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ValidationError, errorResponse, guardRequest, validateApiKey } from "@/lib/api";
+import { ValidationError, errorResponse, guardRequest, resolveApiKey } from "@/lib/api";
 import { EMAIL_LIMITS, EmailValidationError, isEmailType, normalizeCtaUrl } from "@/lib/email-content";
 import { EmailWriterUnavailableError, writeEmailDraft } from "@/lib/email-writer";
 import { logSafeError, toUserFacingError } from "@/lib/openai";
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   let apiKey: string;
   let input;
   try {
-    apiKey = validateApiKey(body.apiKey);
+    apiKey = resolveApiKey(body.apiKey);
     const brief = typeof body.brief === "string" ? body.brief.trim() : "";
     if (brief.length < 10) throw new ValidationError("invalid_prompt", "Tulis brief email minimal 10 karakter.");
     if (brief.length > EMAIL_LIMITS.briefMax) throw new ValidationError("invalid_prompt", "Brief terlalu panjang.");

@@ -4,7 +4,7 @@ import {
   ValidationError,
   errorResponse,
   guardRequest,
-  validateApiKey,
+  resolveApiKey,
   validatePrompt,
   validateSettings,
 } from "@/lib/api";
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
 
   let input;
   try {
-    const apiKey = validateApiKey(body.apiKey);
+    const apiKey = resolveApiKey(body.apiKey);
     const brief = validatePrompt(body.brief);
     const customRatio = body.customRatio as { width?: unknown; height?: unknown } | undefined;
     const settings = validateSettings({

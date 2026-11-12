@@ -229,3 +229,19 @@ export function validateMetaAdField(value: FormDataEntryValue | null): MetaAdSli
     throw new ValidationError("invalid_prompt", "Prompt Meta Ads tidak valid.");
   }
 }
+
+/**
+ * The OpenAI key for a request: the user's own key when they typed one,
+ * otherwise the server's OPENAI_API_KEY (never sent to the browser).
+ */
+export function resolveApiKey(value: unknown): string {
+  const typed = typeof value === "string" ? value.trim() : "";
+  if (typed) return validateApiKey(typed);
+  const server = process.env.OPENAI_API_KEY?.trim();
+  if (server) return server;
+  throw new ValidationError("missing_api_key", "Masukkan OpenAI API key terlebih dahulu.");
+}
+
+export function hasServerApiKey(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}

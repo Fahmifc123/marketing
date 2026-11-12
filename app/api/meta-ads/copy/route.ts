@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ValidationError, errorResponse, guardRequest, validateApiKey } from "@/lib/api";
+import { ValidationError, errorResponse, guardRequest, resolveApiKey } from "@/lib/api";
 import { META_ADS_LIMITS } from "@/lib/meta-ads";
 import type { MetaCopyResponse } from "@/lib/meta-copy";
 import { CopyUnavailableError, writeMetaAdCopy } from "@/lib/meta-copy-writer";
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   let input;
   let apiKey: string;
   try {
-    apiKey = validateApiKey(body.apiKey);
+    apiKey = resolveApiKey(body.apiKey);
     const sharedContext = typeof body.sharedContext === "string" ? body.sharedContext.trim() : "";
     if (sharedContext.length > META_ADS_LIMITS.maxSharedLength) {
       throw new ValidationError("invalid_prompt", "Arahan umum terlalu panjang.");
