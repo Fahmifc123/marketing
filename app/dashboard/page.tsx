@@ -6,7 +6,7 @@ import ImageGenerator from "@/components/ImageGenerator";
 import { hasValidSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "AI Image",
+  title: "AI IMAGE",
 };
 
 export default async function DashboardPage() {

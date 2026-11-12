@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import { hasValidSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Email Marketing",
+  title: "EMAIL MARKETING",
 };
 
 export default async function EmailPage() {

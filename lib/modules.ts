@@ -15,14 +15,14 @@ export interface WorkspaceModule {
 export const WORKSPACE_MODULES: WorkspaceModule[] = [
   {
     id: "ai-image",
-    label: "AI Image",
+    label: "AI IMAGE",
     href: "/dashboard",
     status: "active",
     description: "Turn your idea into an Intelligo ID visual.",
   },
   {
     id: "email",
-    label: "Email",
+    label: "EMAIL MARKETING",
     href: "/dashboard/email",
     status: "active",
     description: "Email marketing via Resend: draft, test send and broadcast to segments.",
