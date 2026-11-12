@@ -67,7 +67,7 @@ export interface ImageResult {
   quality: QualityId;
   size: string;
   notices: string[];
-  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; textTokens?: number; imageTokens?: number };
 }
 
 async function callImagesApi(client: OpenAI, req: ImageRequest, quality: QualityId, size: string) {
@@ -124,6 +124,8 @@ export async function generateImage(req: ImageRequest): Promise<ImageResult> {
               inputTokens: response.usage.input_tokens,
               outputTokens: response.usage.output_tokens,
               totalTokens: response.usage.total_tokens,
+              textTokens: response.usage.input_tokens_details?.text_tokens,
+              imageTokens: response.usage.input_tokens_details?.image_tokens,
             }
           : undefined,
       };

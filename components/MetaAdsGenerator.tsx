@@ -30,15 +30,12 @@ import { createZip } from "@/lib/zip";
 import type { SlideJobStatus } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
-import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
-  apiKey: string;
   settings: Settings;
   reference: ReferenceImage | null;
   devMode: boolean;
   controls: ReactNode;
-  onApiKeyError: (message: string) => void;
   onSaveToHistory: (item: HistoryItem) => Promise<void>;
   /** Official logo to composite onto results (null = off). */
   activeLogo: ActiveLogo | null;
@@ -266,12 +263,10 @@ function PromptPreview({ load }: { load: () => Promise<string> }) {
 }
 
 export default function MetaAdsGenerator({
-  apiKey,
   settings,
   reference,
   devMode,
   controls,
-  onApiKeyError,
   onSaveToHistory,
   activeLogo,
   footer,
@@ -317,14 +312,7 @@ export default function MetaAdsGenerator({
     };
   }, []);
 
-  const serverKey = useServerApiKey();
-
   function validateKey(): boolean {
-    const problem = apiKeyProblem(apiKey, serverKey);
-    if (problem) {
-      onApiKeyError(problem);
-      return false;
-    }
     return true;
   }
 
@@ -395,7 +383,6 @@ export default function MetaAdsGenerator({
     setJob(id, { status: "generating" });
 
     const form = new FormData();
-    form.set("apiKey", apiKey.trim());
     form.set("prompt", target.slides[slide - 1]);
     form.set("model", settings.model);
     form.set("quality", settings.quality);
@@ -427,7 +414,6 @@ export default function MetaAdsGenerator({
       }
       if (!data.ok) {
         if (data.error.code === "unauthorized") window.location.replace("/login");
-        if (data.error.code === "invalid_api_key") onApiKeyError(data.error.message);
         setJob(id, { status: "error", error: data.error.message });
         return { ok: false, code: data.error.code, message: data.error.message };
       }
@@ -1151,13 +1137,11 @@ export default function MetaAdsGenerator({
 
         {draft && (
           <MetaAdCopy
-            apiKey={apiKey}
             input={
               view === "results" && approved
                 ? { sharedContext: approved.draft.shared, slides: approved.draft.slides, texts: approved.draft.texts }
                 : { sharedContext: draft.shared, slides: draft.slides, texts: draft.texts }
             }
-            onApiKeyError={onApiKeyError}
             disabled={running || emptySlide || tooMany}
           />
         )}

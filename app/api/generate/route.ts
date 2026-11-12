@@ -12,10 +12,11 @@ import {
   validateSettings,
 } from "@/lib/api";
 import { isStoryPrompt } from "@/lib/content-detection";
-import { getModel, PROMPT_LIMITS, resolveFormat } from "@/lib/image-settings";
+import { getModel, PROMPT_LIMITS, resolveFormat, sizeForModel } from "@/lib/image-settings";
 import { isLogoCorner } from "@/lib/logo-placement";
 import { SPEAKER_LIMITS, isContentMode, parseSpeakers } from "@/lib/speakers";
 import { generateImage, logSafeError, toUserFacingError } from "@/lib/openai";
+import { actualImageCost, estimateImageCost } from "@/lib/pricing";
 import {
   analyzeBrief,
   buildCarouselSlidePrompt,
@@ -178,11 +179,25 @@ export async function POST(request: NextRequest) {
       model: model.id,
       prompt: internalPrompt,
       quality: settings.quality,
-      size: format.generationSize,
+      size: sizeForModel(model.id, format.generationSize),
       references,
       signal: request.signal,
     });
 
+    const actual = result.usage ? actualImageCost(model.id, result.usage) : null;
+    const cost = actual
+      ? { usd: actual.usd, estimated: false, verified: actual.verified }
+      : (() => {
+          const e = estimateImageCost({
+            model: model.id,
+            quality: result.quality,
+            size: sizeForModel(model.id, format.generationSize),
+            promptChars: internalPrompt.length,
+            fullPrompt: true,
+            referenceImages: references.length,
+          });
+          return { usd: e.usd, estimated: true, verified: e.verified };
+        })();
     const body: GenerateSuccessResponse = {
       ok: true,
       image: { b64: result.b64, mimeType: result.mimeType },
@@ -205,6 +220,7 @@ export async function POST(request: NextRequest) {
           ...result.notices,
         ],
         usage: result.usage,
+        cost,
         ...(carousel && slide
           ? {
               carouselSlide: {

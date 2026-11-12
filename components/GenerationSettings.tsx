@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId, useState } from "react";
+import { useEffect, useId } from "react";
 
 import {
   FORMAT_PRESETS,
@@ -8,33 +8,27 @@ import {
   QUALITY_OPTIONS,
   formatSize,
   isValidCustomRatio,
+  qualityForModel,
   resolveFormat,
+  sizeForModel,
 } from "@/lib/image-settings";
+import { PRICING, estimateImageCost, formatUsd } from "@/lib/pricing";
 import type { GenerationSettings as Settings } from "@/types/generation";
-import type { FormatId, QualityId } from "@/types/image";
+import type { Dimensions, FormatId, QualityId } from "@/types/image";
 
 interface Props {
-  apiKey: string;
-  onApiKeyChange: (value: string) => void;
-  apiKeyError?: string | null;
-  /** Server has OPENAI_API_KEY, so typing a key is optional. */
-  serverKey?: boolean;
   settings: Settings;
   onSettingsChange: (settings: Settings) => void;
   autoStory: boolean;
   /** Hidden in Meta Ads mode, where sizes are picked with checkboxes. */
   showFormat?: boolean;
   disabled?: boolean;
+  /** Inputs for the price estimate. `images` = how many images one click generates. */
+  estimate?: { promptChars: number; referenceImages: number; images: number; sizes?: Dimensions[] };
 }
 
-const GenerationSettings = forwardRef<HTMLInputElement, Props>(function GenerationSettings(
-  { apiKey, onApiKeyChange, apiKeyError, serverKey = false, settings, onSettingsChange, autoStory, showFormat = true, disabled },
-  apiKeyRef,
-) {
+export default function GenerationSettings({ settings, onSettingsChange, autoStory, showFormat = true, disabled, estimate }: Props) {
   const ids = {
-    key: useId(),
-    keyHelp: useId(),
-    keyError: useId(),
     model: useId(),
     quality: useId(),
     format: useId(),
@@ -42,7 +36,6 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
     customW: useId(),
     customH: useId(),
   };
-  const [showKey, setShowKey] = useState(false);
 
   const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch });
   const customValid = isValidCustomRatio(settings.customRatio);
@@ -52,54 +45,34 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
     autoStory: autoStory && !settings.formatExplicit,
   });
   const model = IMAGE_MODELS.find((m) => m.id === settings.model);
+  const qualities = QUALITY_OPTIONS.filter((q) => !model || model.qualities.includes(q.id));
   const quality = QUALITY_OPTIONS.find((q) => q.id === settings.quality);
+
+  // Keep the quality valid when switching to a model that does not support it.
+  useEffect(() => {
+    const q = qualityForModel(settings.model, settings.quality);
+    if (q !== settings.quality) onSettingsChange({ ...settings, quality: q });
+  }, [settings, onSettingsChange]);
+
+  const sizes = (estimate?.sizes?.length ? estimate.sizes : [resolved.generationSize]).map((s) => sizeForModel(settings.model, s));
+  const perClick = estimate
+    ? sizes.reduce(
+        (sum, size) =>
+          sum +
+          estimateImageCost({
+            model: settings.model,
+            quality: qualityForModel(settings.model, settings.quality),
+            size,
+            promptChars: estimate.promptChars,
+            referenceImages: estimate.referenceImages,
+          }).usd,
+        0,
+      ) * Math.max(1, estimate.images)
+    : null;
+  const verified = PRICING[settings.model]?.verified ?? false;
 
   return (
     <div className="space-y-5">
-      <div>
-        <label htmlFor={ids.key} className="label">
-          OpenAI API Key{serverKey && <span className="font-normal text-muted"> (opsional)</span>}
-        </label>
-        <div className="relative">
-          <input
-            ref={apiKeyRef}
-            id={ids.key}
-            type={showKey ? "text" : "password"}
-            value={apiKey}
-            onChange={(e) => onApiKeyChange(e.target.value)}
-            placeholder={serverKey ? "Kosongkan — memakai API key server" : "sk-••••••••••••••••••••••••"}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            data-1p-ignore
-            data-lpignore="true"
-            aria-invalid={apiKeyError ? true : undefined}
-            aria-describedby={`${ids.keyHelp}${apiKeyError ? ` ${ids.keyError}` : ""}`}
-            className="field pr-20 font-mono text-sm"
-          />
-          <button
-            type="button"
-            onClick={() => setShowKey((v) => !v)}
-            aria-pressed={showKey}
-            aria-controls={ids.key}
-            className="absolute inset-y-1 right-1 rounded-md px-3 text-xs font-semibold text-navy hover:bg-pale"
-          >
-            {showKey ? "Hide" : "Show"}
-          </button>
-        </div>
-        {apiKeyError && (
-          <p id={ids.keyError} role="alert" className="mt-1.5 text-sm text-danger">
-            {apiKeyError}
-          </p>
-        )}
-        <p id={ids.keyHelp} className="mt-1.5 text-xs leading-relaxed text-muted">
-          {serverKey
-            ? "API key server sudah terpasang — kolom ini boleh dikosongkan. Isi hanya jika ingin memakai key sendiri (disimpan di memori tab ini saja)."
-            : "Disimpan hanya di memori tab ini — tidak disimpan, tidak dicatat, dan hilang saat logout atau refresh."}
-        </p>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div>
           <label htmlFor={ids.model} className="label">
@@ -132,7 +105,7 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
             className="select"
             title={quality?.description}
           >
-            {QUALITY_OPTIONS.map((q) => (
+            {qualities.map((q) => (
               <option key={q.id} value={q.id}>
                 {q.label}
               </option>
@@ -140,6 +113,17 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
           </select>
         </div>
       </div>
+
+      {perClick !== null && (
+        <p className="-mt-2 rounded-lg bg-pale/60 px-3 py-2 text-xs text-navy" aria-live="polite">
+          Estimasi biaya: <strong>{formatUsd(perClick)}</strong>
+          {estimate && estimate.images * sizes.length > 1 ? ` untuk ${estimate.images * sizes.length} gambar` : " per gambar"}
+          <span className="text-muted">
+            {" "}
+            · {verified ? "tarif resmi OpenAI" : "tarif model ini belum dipublikasikan, diasumsikan = GPT-Image 2"} · biaya asli muncul setelah generate
+          </span>
+        </p>
+      )}
 
       {showFormat && (
         <div>
@@ -224,6 +208,4 @@ const GenerationSettings = forwardRef<HTMLInputElement, Props>(function Generati
       )}
     </div>
   );
-});
-
-export default GenerationSettings;
+}

@@ -14,12 +14,9 @@ import {
   type MetaCopyResponse,
   type MetaCtaButton,
 } from "@/lib/meta-copy";
-import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
-  apiKey: string;
   input: MetaCopyInput;
-  onApiKeyError: (message: string) => void;
   disabled?: boolean;
 }
 
@@ -50,7 +47,7 @@ function CopyButton({ value, label = "Copy" }: { value: string; label?: string }
 }
 
 /** Ads Manager copy for the carousel: primary text variants, card headlines/descriptions and CTA button. */
-export default function MetaAdCopy({ apiKey, input, onApiKeyError, disabled }: Props) {
+export default function MetaAdCopy({ input, disabled }: Props) {
   const id = useId();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,27 +60,18 @@ export default function MetaAdCopy({ apiKey, input, onApiKeyError, disabled }: P
   const issues = copy && !stale ? verifyMetaAdCopy(copy, copySource(input)) : [];
   const issuesFor = (field: string) => issues.filter((i) => i.field === field && i.severity === "error");
 
-  const serverKey = useServerApiKey();
-
   async function generate() {
-    const key = apiKey.trim();
-    const problem = apiKeyProblem(key, serverKey);
-    if (problem) {
-      onApiKeyError(problem);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/meta-ads/copy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: key, ...input }),
+        body: JSON.stringify(input),
       });
       const data = (await res.json()) as MetaCopyResponse | { ok: false; error: { code: string; message: string } };
       if (!data.ok) {
         if (data.error.code === "unauthorized") window.location.replace("/login");
-        if (data.error.code === "invalid_api_key") onApiKeyError(data.error.message);
         throw new Error(data.error.message);
       }
       setCopy(data.copy);

@@ -14,7 +14,6 @@ import {
   type EmailIssue,
   type EmailType,
 } from "@/lib/email-content";
-import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Status {
   ready: boolean;
@@ -78,8 +77,6 @@ export default function EmailMarketing() {
   const [status, setStatus] = useState<Status | null>(null);
 
   // Brief
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const [emailType, setEmailType] = useState<EmailType>("promo");
   const [brief, setBrief] = useState("");
   const [ctaUrl, setCtaUrl] = useState("");
@@ -139,21 +136,14 @@ export default function EmailMarketing() {
     setBroadcastDone(null);
   }
 
-  const serverKey = useServerApiKey();
-
   async function generate() {
-    const keyProblem = apiKeyProblem(apiKey, serverKey);
-    if (keyProblem) {
-      setGenError(keyProblem);
-      return;
-    }
     setGenerating(true);
     setGenError(null);
     try {
       const data = await api<{ draft: EmailDraft; model: string; revisions: number }>("/api/email/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey.trim(), brief, emailType, ctaUrl: ctaUrl.trim() }),
+        body: JSON.stringify({ brief, emailType, ctaUrl: ctaUrl.trim() }),
       });
       setDraft(data.draft);
       setWriterMeta({ model: data.model, revisions: data.revisions });
@@ -284,35 +274,6 @@ export default function EmailMarketing() {
                 Tulis sendiri seperti di Mailchimp: isi subject, judul, paragraf dan tombol di editor di bawah, pilih template, upload gambar/file,
                 lalu cek preview. Tidak memakai AI.
               </p>
-            )}
-            {mode === "ai" && (
-              <div>
-              <label htmlFor={`${id}-key`} className="label">
-                OpenAI API Key{serverKey && <span className="font-normal text-muted"> (opsional)</span>}
-              </label>
-              <div className="relative">
-                <input
-                  id={`${id}-key`}
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={serverKey ? "Kosongkan — memakai API key server" : "sk-••••••••••••••••••••••••"}
-                  autoComplete="off"
-                  spellCheck={false}
-                  data-1p-ignore
-                  className="field pr-20 font-mono text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey((v) => !v)}
-                  aria-pressed={showKey}
-                  className="absolute inset-y-1 right-1 rounded-md px-3 text-xs font-semibold text-navy hover:bg-pale"
-                >
-                  {showKey ? "Hide" : "Show"}
-                </button>
-              </div>
-              <p className="mt-1.5 text-xs text-muted">Hanya untuk menulis draft. Disimpan di memori tab ini saja.</p>
-              </div>
             )}
             <div className={`grid gap-4 ${mode === "ai" ? "sm:grid-cols-2" : ""}`}>
               {mode === "ai" && (

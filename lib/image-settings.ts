@@ -16,22 +16,59 @@ import type {
   ResolvedFormat,
 } from "@/types/image";
 
+const ALL_QUALITIES: QualityId[] = ["low", "medium", "high", "xhigh", "max"];
+const BASIC_QUALITIES: QualityId[] = ["low", "medium", "high"];
+
 export const IMAGE_MODELS: ImageModelOption[] = [
   {
     id: "gpt-image-2.5-sunburst",
     label: "GPT-Image 2.5 Sunburst",
     description: "Primary model. Best overall quality.",
+    qualities: ALL_QUALITIES,
+    arbitrarySizes: true,
   },
   {
     id: "gpt-image-2.5-flare",
     label: "GPT-Image 2.5 Flare",
-    description: "Secondary model.",
+    description: "Secondary 2.5 model.",
+    qualities: ALL_QUALITIES,
+    arbitrarySizes: true,
+  },
+  {
+    id: "gpt-image-2",
+    label: "GPT-Image 2",
+    description: "Previous generation. Cheaper, still sharp.",
+    qualities: BASIC_QUALITIES,
+    arbitrarySizes: true,
+  },
+  {
+    id: "gpt-image-1.5",
+    label: "GPT-Image 1.5",
+    description: "Older model. Standard sizes only (upscaled to the export size).",
+    qualities: BASIC_QUALITIES,
+    arbitrarySizes: false,
+  },
+  {
+    id: "gpt-image-1",
+    label: "GPT-Image 1",
+    description: "Legacy model. Standard sizes only.",
+    qualities: BASIC_QUALITIES,
+    arbitrarySizes: false,
+  },
+  {
+    id: "gpt-image-1-mini",
+    label: "GPT-Image 1 Mini",
+    description: "Cheapest. Good for drafts. Standard sizes only.",
+    qualities: BASIC_QUALITIES,
+    arbitrarySizes: false,
   },
 ];
 
 export const DEFAULT_MODEL = IMAGE_MODELS[0].id;
 
 export const QUALITY_OPTIONS: QualityOption[] = [
+  { id: "low", label: "Low", description: "Draft / quick concept. Cheapest." },
+  { id: "medium", label: "Medium", description: "Good balance of cost and detail." },
   { id: "high", label: "High", description: "Fast, production-ready quality." },
   { id: "xhigh", label: "Extra High", description: "More detail, slower." },
   { id: "max", label: "Max", description: "Highest detail, slowest." },
@@ -124,6 +161,18 @@ export function getModel(id: string): ImageModelOption | undefined {
 
 export function isQualityId(value: unknown): value is QualityId {
   return QUALITY_OPTIONS.some((q) => q.id === value);
+}
+
+/** The requested quality if the model supports it, else the closest one it does. */
+export function qualityForModel(modelId: string, quality: QualityId): QualityId {
+  const model = getModel(modelId);
+  if (!model || model.qualities.includes(quality)) return quality;
+  return model.qualities.includes("high") ? "high" : model.qualities[model.qualities.length - 1];
+}
+
+/** Size actually sent to the model (legacy models only take the 3 standard sizes). */
+export function sizeForModel(modelId: string, size: Dimensions): Dimensions {
+  return getModel(modelId)?.arbitrarySizes === false ? standardSizeFor(size) : size;
 }
 
 export function getFormatPreset(id: string): FormatPreset | undefined {

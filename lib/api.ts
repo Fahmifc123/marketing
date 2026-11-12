@@ -18,6 +18,7 @@ import {
   getModel,
   isQualityId,
   isValidCustomRatio,
+  qualityForModel,
 } from "@/lib/image-settings";
 import type { CarouselPlan } from "@/types/carousel";
 import type { ApiErrorResponse, GenerationSettings } from "@/types/generation";
@@ -100,7 +101,7 @@ export function validateSettings(input: {
   const customRatio = formatId === "custom" ? parseCustomRatio(input.customWidth, input.customHeight) : DEFAULT_CUSTOM_RATIO;
   return {
     model: input.model,
-    quality: input.quality,
+    quality: qualityForModel(input.model, input.quality),
     formatId,
     customRatio,
     formatExplicit: input.formatExplicit === true || input.formatExplicit === "true",
@@ -230,16 +231,11 @@ export function validateMetaAdField(value: FormDataEntryValue | null): MetaAdSli
   }
 }
 
-/**
- * The OpenAI key for a request: the user's own key when they typed one,
- * otherwise the server's OPENAI_API_KEY (never sent to the browser).
- */
-export function resolveApiKey(value: unknown): string {
-  const typed = typeof value === "string" ? value.trim() : "";
-  if (typed) return validateApiKey(typed);
+/** The OpenAI key always comes from the server's OPENAI_API_KEY; users never enter one. */
+export function resolveApiKey(_value?: unknown): string {
   const server = process.env.OPENAI_API_KEY?.trim();
   if (server) return server;
-  throw new ValidationError("missing_api_key", "Masukkan OpenAI API key terlebih dahulu.");
+  throw new ValidationError("missing_api_key", "OPENAI_API_KEY belum diatur di server (Vercel → Environment Variables).");
 }
 
 export function hasServerApiKey(): boolean {

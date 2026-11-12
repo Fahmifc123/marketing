@@ -117,6 +117,9 @@ function qualityDirection(quality: QualityId) {
       return "Maximum fidelity: crisp fine detail, refined materials and textures, flawless edges.";
     case "xhigh":
       return "Very high fidelity: crisp detail and refined textures.";
+    case "low":
+    case "medium":
+      return "Clean and clear: simple, well-composed, readable.";
     default:
       return "High fidelity: clean, sharp and production-ready.";
   }

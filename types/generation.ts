@@ -52,7 +52,11 @@ export interface GenerationMeta {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
+    textTokens?: number;
+    imageTokens?: number;
   };
+  /** USD. `estimated`: OpenAI returned no usage. `verified`: rate is OpenAI's published price. */
+  cost?: { usd: number; estimated: boolean; verified: boolean };
   carouselSlide?: {
     index: number;
     total: number;

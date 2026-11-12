@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { formatUsd } from "@/lib/pricing";
 
 import type { CreativeResult } from "@/types/generation";
 import type { Dimensions } from "@/types/image";
@@ -57,6 +58,24 @@ export default function ImagePreview({
         {showImage && (
           <p className="text-xs text-muted">
             {result.modelLabel} · {result.formatLabel} {result.aspectRatio} · {result.size}
+            {result.meta?.cost && (
+              <>
+                {" · "}
+                <span
+                  className="font-semibold text-navy"
+                  title={
+                    result.meta.cost.estimated
+                      ? "Estimasi — OpenAI tidak mengirim data pemakaian token."
+                      : result.meta.cost.verified
+                        ? "Dihitung dari token yang benar-benar dipakai × harga resmi OpenAI."
+                        : "Dihitung dari token asli; tarif model ini belum dipublikasikan OpenAI (diasumsikan = GPT-Image 2)."
+                  }
+                >
+                  Biaya {result.meta.cost.estimated || !result.meta.cost.verified ? "≈ " : ""}
+                  {formatUsd(result.meta.cost.usd)}
+                </span>
+              </>
+            )}
           </p>
         )}
       </div>

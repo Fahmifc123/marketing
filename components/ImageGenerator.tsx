@@ -34,7 +34,6 @@ import type {
   PromptPreviewResponse,
 } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
-import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface GenerationRequest {
   prompt: string;
@@ -61,8 +60,6 @@ function newId() {
 
 export default function ImageGenerator() {
   // The API key lives only in this component's memory. It is never persisted.
-  const [apiKey, setApiKey] = useState("");
-  const serverKey = useServerApiKey();
   const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
   const [prompt, setPrompt] = useState("");
   const [reference, setReference] = useState<ReferenceImage | null>(null);
@@ -71,7 +68,7 @@ export default function ImageGenerator() {
 
   const [status, setStatus] = useState<PreviewStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<{ apiKey?: string; prompt?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ prompt?: string }>({});
   const [result, setResult] = useState<CreativeResult | null>(null);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -90,7 +87,6 @@ export default function ImageGenerator() {
   const brandLogo = useBrandLogo();
   const activeLogo = brandLogo.activeLogo;
   const logoCorner = activeLogo?.corner ?? null;
-  const apiKeyRef = useRef<HTMLInputElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const inFlight = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -184,15 +180,8 @@ export default function ImageGenerator() {
     if (inFlight.current) return;
 
     const errors: typeof fieldErrors = {};
-    const key = apiKey.trim();
-    const keyProblem = apiKeyProblem(key, serverKey);
-    if (keyProblem) errors.apiKey = keyProblem;
     if (request.prompt.trim().length < PROMPT_LIMITS.minLength) errors.prompt = "Tulis dulu apa yang ingin kamu buat.";
     setFieldErrors(errors);
-    if (errors.apiKey) {
-      apiKeyRef.current?.focus();
-      return;
-    }
     if (errors.prompt) {
       promptRef.current?.focus();
       return;
@@ -208,7 +197,6 @@ export default function ImageGenerator() {
     setError(null);
 
     const form = new FormData();
-    form.set("apiKey", key);
     form.set("prompt", request.prompt.trim());
     form.set("model", request.settings.model);
     form.set("quality", request.settings.quality);
@@ -245,9 +233,6 @@ export default function ImageGenerator() {
           // Full navigation also clears the in-memory API key.
           window.location.replace("/login");
           return;
-        }
-        if (data.error.code === "invalid_api_key" || data.error.code === "missing_api_key") {
-          setFieldErrors({ apiKey: data.error.message });
         }
         throw new Error(data.error.message);
       }
@@ -312,11 +297,6 @@ export default function ImageGenerator() {
   async function saveToHistory(item: HistoryItem) {
     await addHistoryItem(item);
     await refreshHistory();
-  }
-
-  function focusApiKeyError(message: string) {
-    setFieldErrors((f) => ({ ...f, apiKey: message }));
-    apiKeyRef.current?.focus();
   }
 
   function generateFromForm() {
@@ -405,17 +385,14 @@ export default function ImageGenerator() {
   const sharedControls = (
     <>
       <GenerationSettings
-        ref={apiKeyRef}
-        apiKey={apiKey}
-        onApiKeyChange={(v) => {
-          setApiKey(v);
-          if (fieldErrors.apiKey) setFieldErrors((f) => ({ ...f, apiKey: undefined }));
-        }}
-        apiKeyError={fieldErrors.apiKey}
-        serverKey={serverKey}
         settings={settings}
         onSettingsChange={setSettings}
         autoStory={mode === "single" && autoStory}
+        estimate={{
+          promptChars: mode === "single" ? prompt.length : 600,
+          referenceImages: (reference ? 1 : 0) + (mode === "single" && contentMode === "class" ? speakers.length : 0) + (mode === "single" ? 0 : 1),
+          images: 1,
+        }}
         showFormat={mode !== "meta"}
         disabled={loading}
       />
@@ -495,24 +472,20 @@ export default function ImageGenerator() {
 
       {mode === "meta" ? (
         <MetaAdsGenerator
-          apiKey={apiKey}
           settings={settings}
           reference={reference}
           devMode={devMode}
           controls={sharedControls}
-          onApiKeyError={focusApiKeyError}
           onSaveToHistory={saveToHistory}
           activeLogo={activeLogo}
           footer={historyPanel}
         />
       ) : mode === "carousel" ? (
         <CarouselGenerator
-          apiKey={apiKey}
           settings={settings}
           reference={reference}
           devMode={devMode}
           controls={sharedControls}
-          onApiKeyError={focusApiKeyError}
           onSaveToHistory={saveToHistory}
           activeLogo={activeLogo}
           footer={historyPanel}

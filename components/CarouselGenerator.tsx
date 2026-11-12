@@ -23,16 +23,13 @@ import { createZip } from "@/lib/zip";
 import type { CarouselPlan, CarouselPlanResponse } from "@/types/carousel";
 import type { GenerateResponse, GenerationSettings as Settings } from "@/types/generation";
 import type { HistoryItem } from "@/types/image";
-import { apiKeyProblem, useServerApiKey } from "@/lib/api-key-client";
 
 interface Props {
-  apiKey: string;
   settings: Settings;
   reference: ReferenceImage | null;
   devMode: boolean;
   /** Shared API key / model / quality / format / reference controls. */
   controls: ReactNode;
-  onApiKeyError: (message: string) => void;
   onSaveToHistory: (item: HistoryItem) => Promise<void>;
   /** Official logo to composite onto results (null = off). */
   activeLogo: ActiveLogo | null;
@@ -60,12 +57,10 @@ function newId() {
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export default function CarouselGenerator({
-  apiKey,
   settings,
   reference,
   devMode,
   controls,
-  onApiKeyError,
   onSaveToHistory,
   activeLogo,
   footer,
@@ -112,14 +107,7 @@ export default function CarouselGenerator({
     };
   }, []);
 
-  const serverKey = useServerApiKey();
-
   function validateInputs(): boolean {
-    const keyProblem = apiKeyProblem(apiKey, serverKey);
-    if (keyProblem) {
-      onApiKeyError(keyProblem);
-      return false;
-    }
     if (settings.formatId === "custom" && !isValidCustomRatio(settings.customRatio)) {
       setError("Rasio custom harus antara 1:3 dan 3:1.");
       return false;
@@ -149,7 +137,6 @@ export default function CarouselGenerator({
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          apiKey: apiKey.trim(),
           brief: brief.trim(),
           slideCount,
           model: settings.model,
@@ -165,7 +152,6 @@ export default function CarouselGenerator({
           window.location.replace("/login");
           return;
         }
-        if (data.error.code === "invalid_api_key") onApiKeyError(data.error.message);
         throw new Error(data.error.message);
       }
       // Issues are re-computed live from the (editable) plan with the same verifier.
@@ -230,7 +216,6 @@ export default function CarouselGenerator({
     const slide = target.slides[index - 1];
 
     const form = new FormData();
-    form.set("apiKey", apiKey.trim());
     form.set("prompt", planBrief);
     form.set("model", settings.model);
     form.set("quality", settings.quality);
@@ -256,7 +241,6 @@ export default function CarouselGenerator({
       }
       if (!data.ok) {
         if (data.error.code === "unauthorized") window.location.replace("/login");
-        if (data.error.code === "invalid_api_key") onApiKeyError(data.error.message);
         setJob(index, { status: "error", error: data.error.message });
         return { ok: false, code: data.error.code, message: data.error.message };
       }

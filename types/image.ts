@@ -1,4 +1,4 @@
-export type QualityId = "high" | "xhigh" | "max";
+export type QualityId = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type FormatId =
   | "instagram-portrait"
@@ -14,6 +14,10 @@ export interface ImageModelOption {
   /** Human-readable label shown in the UI. */
   label: string;
   description: string;
+  /** Qualities this model accepts. */
+  qualities: QualityId[];
+  /** Accepts any WIDTHxHEIGHT; otherwise only 1024x1024 / 1024x1536 / 1536x1024. */
+  arbitrarySizes: boolean;
 }
 
 export interface QualityOption {
