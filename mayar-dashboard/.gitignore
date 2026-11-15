@@ -1,0 +1,3 @@
+# Raw Mayar responses contain buyer data (names, emails, phones) — never commit.
+data/
+.env
