@@ -54,3 +54,13 @@ describe("aggregation", () => {
     expect(byProduct(rows).map((p) => p.product)).toEqual(["A", "B", "Webinar"]);
   });
 });
+
+describe("sync window", () => {
+  it("starts at 00:00 WIB on the 1st of the previous month", async () => {
+    const { syncWindowStart } = await import("@/lib/sales");
+    // 15 Nov 2026 → 1 Oct 2026 00:00 WIB = 30 Sep 17:00 UTC
+    expect(new Date(syncWindowStart(Date.UTC(2026, 10, 15, 6))).toISOString()).toBe("2026-09-30T17:00:00.000Z");
+    // 10 Jan 2027 → 1 Dec 2026 00:00 WIB
+    expect(new Date(syncWindowStart(Date.UTC(2027, 0, 10))).toISOString()).toBe("2026-11-30T17:00:00.000Z");
+  });
+});

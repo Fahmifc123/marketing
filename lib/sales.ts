@@ -33,6 +33,13 @@ const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: JKT, year: "numeric"
 export const dayKey = (ms: number) => dayFmt.format(new Date(ms));
 export const monthKey = (ms: number) => dayKey(ms).slice(0, 7);
 
+/** Start (epoch ms) of the synced window: 00:00 WIB on the 1st of the previous month. */
+export function syncWindowStart(now = Date.now()): number {
+  const [y, m] = monthKey(now).split("-").map(Number);
+  // 00:00 WIB = 17:00 UTC the day before.
+  return Date.UTC(y, m - 2, 1) - 7 * 3_600_000;
+}
+
 export const isPaid = (r: SaleRow) => r.gross > 0;
 
 export interface Totals {

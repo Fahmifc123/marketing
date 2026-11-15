@@ -36,7 +36,7 @@ Data penjualan disimpan di storage privat Vercel Blob **marketing-data** (variab
 
 - **Otomatis:** saat halaman PENJUALAN dibuka dan data terakhir lebih dari 15 menit, aplikasi mengambil transaksi baru dari Mayar.
 - **Manual:** klik **Sinkron sekarang** di kanan atas dashboard.
-- **Sinkron pertama** mengambil seluruh riwayat secara bertahap, karena Mayar membatasi sekitar 50 request beruntun. Kalau muncul "riwayat lama belum lengkap", buka halaman lagi beberapa menit kemudian dan proses akan dilanjutkan dari posisi terakhir.
+- **Rentang data:** hanya transaksi sejak **tanggal 1 bulan lalu** (WIB), cukup untuk bulan berjalan dan perbandingan dengan bulan lalu. Data yang lebih lama otomatis dibuang dari penyimpanan.
 - **Idempoten:** transaksi disimpan berdasarkan ID Mayar, jadi transaksi yang sama tidak pernah masuk dua kali.
 
 ### Menjalankan skrip verifikasi secara lokal

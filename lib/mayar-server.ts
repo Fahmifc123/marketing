@@ -1,14 +1,15 @@
 /**
  * Read-only Mayar sync. Transactions are pulled from the Mayar API with the
  * server-side MAYAR_API_KEY, stripped of buyer contact data (only the first
- * name is kept), and stored in the private DATA blob store. Each sync pulls
- * new transactions first, then continues the history backfill within a time
- * budget (Mayar rate-limits at roughly 50 requests in a burst).
+ * name is kept), and stored in the private DATA blob store. Only the window
+ * from the 1st of the previous month (Jakarta) is kept: enough for the
+ * current month and the month-over-month comparison, and small enough to
+ * stay well under Mayar's rate limit (~50 requests in a burst).
  */
 import "server-only";
 
 import { isPreconditionError, readJson, writeJson } from "@/lib/private-blob";
-import type { SaleRow, SalesSnapshot } from "@/lib/sales";
+import { syncWindowStart, type SaleRow, type SalesSnapshot } from "@/lib/sales";
 
 const API = "https://api.mayar.id/hl/v2/transactions";
 const PATH = "db/mayar-sales.json";
@@ -83,7 +84,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function readSales(): Promise<SalesSnapshot> {
   const { value } = await readJson<StoredSales>(PATH);
   const s = value ?? EMPTY;
-  return { rows: s.rows, syncedAt: s.syncedAt, complete: s.complete };
+  const cutoff = syncWindowStart(Date.now());
+  return { rows: s.rows.filter((r) => r.createdAt >= cutoff), syncedAt: s.syncedAt, complete: s.complete };
 }
 
 export interface SyncResult {
@@ -97,8 +99,11 @@ export interface SyncResult {
 /** Pulls new transactions, then more history, within `budgetMs`. Idempotent: rows are keyed by Mayar id. */
 export async function syncSales(budgetMs = 40_000): Promise<SyncResult> {
   const started = Date.now();
+  const cutoff = syncWindowStart(started);
   const { value, etag } = await readJson<StoredSales>(PATH);
   const store: StoredSales = value ?? structuredClone(EMPTY);
+  // Drop anything older than the window (also shrinks stores from earlier full syncs).
+  store.rows = store.rows.filter((r) => r.createdAt >= cutoff);
   const known = new Set(store.rows.map((r) => r.id));
   let added = 0;
   let backfilled = 0;
@@ -112,7 +117,12 @@ export async function syncSales(budgetMs = 40_000): Promise<SyncResult> {
     for (;;) {
       const page = await fetchPage(cursor);
       let reachedKnown = false;
+      let reachedCutoff = false;
       for (const t of page.data) {
+        if (Number(t.createdAt) < cutoff) {
+          reachedCutoff = true;
+          continue;
+        }
         if (known.has(String(t.id))) {
           reachedKnown = true;
           continue;
@@ -123,10 +133,10 @@ export async function syncSales(budgetMs = 40_000): Promise<SyncResult> {
       }
       if (firstRun) {
         // First ever sync: this walk *is* the backfill.
-        store.backfillCursor = page.hasMore ? page.next : null;
-        store.complete = !page.hasMore;
+        store.complete = reachedCutoff || !page.hasMore;
+        store.backfillCursor = store.complete ? null : page.next;
       }
-      if (reachedKnown || !page.hasMore || !page.next || timeLeft() < 3000) break;
+      if (reachedCutoff || reachedKnown || !page.hasMore || !page.next || timeLeft() < 3000) break;
       cursor = page.next;
       await sleep(PAGE_DELAY_MS);
     }
@@ -136,15 +146,20 @@ export async function syncSales(budgetMs = 40_000): Promise<SyncResult> {
     while (!store.complete && store.backfillCursor && timeLeft() > 3000) {
       await sleep(PAGE_DELAY_MS);
       const page = await fetchPage(store.backfillCursor);
+      let reachedCutoff = false;
       for (const t of page.data) {
+        if (Number(t.createdAt) < cutoff) {
+          reachedCutoff = true;
+          continue;
+        }
         if (!known.has(String(t.id))) {
           store.rows.push(sanitize(t));
           known.add(String(t.id));
           backfilled++;
         }
       }
-      store.backfillCursor = page.hasMore ? page.next : null;
-      store.complete = !page.hasMore || !page.next;
+      store.complete = reachedCutoff || !page.hasMore || !page.next;
+      store.backfillCursor = store.complete ? null : page.next;
     }
   } catch (err) {
     if (err instanceof MayarRateLimitError) rateLimited = true;

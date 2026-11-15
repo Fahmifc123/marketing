@@ -9,7 +9,6 @@ import {
   inMonth,
   isPaid,
   monthKey,
-  monthlySeries,
   rupiah,
   rupiahShort,
   totals,
@@ -192,10 +191,6 @@ export default function SalesDashboard() {
     return dailySeries(rows, days, end).map((d) => ({ key: d.key, label: String(Number(d.key.slice(8))), value: d.net, detail: `${dayLabel(d.key)} · ${d.paid} transaksi berbayar` }));
   }, [rows, month, now]);
 
-  const monthly = useMemo(
-    () => monthlySeries(rows, 12, now).map((d) => ({ key: d.key, label: d.key.endsWith("-01") ? monthLabel(d.key) : MONTHS_ID[Number(d.key.slice(5)) - 1], value: d.net, detail: `${monthLabel(d.key, true)} · ${d.paid} transaksi berbayar` })),
-    [rows, now],
-  );
   const products = useMemo(() => byProduct(monthRows), [monthRows]);
   const maxProductNet = Math.max(1, ...products.map((p) => p.net));
   const recent = monthRows.slice(0, 25);
@@ -255,32 +250,6 @@ export default function SalesDashboard() {
               <span className="text-xs text-muted">Arahkan kursor ke batang untuk detail</span>
             </div>
             <BarChart bars={daily} ariaLabel={`Neto per hari ${monthLabel(month, true)}`} labelEvery={daily.length > 20 ? 3 : 1} />
-          </section>
-
-          <section className="panel p-5 sm:p-6">
-            <h2 className="mb-3 text-sm font-semibold text-navy">Neto per bulan · 12 bulan terakhir</h2>
-            <BarChart bars={monthly} ariaLabel="Neto per bulan, 12 bulan terakhir" />
-            <details className="mt-3 text-sm">
-              <summary className="cursor-pointer text-xs font-semibold text-navy-600">Lihat sebagai tabel</summary>
-              <table className="mt-2 w-full text-left text-xs">
-                <thead className="text-muted">
-                  <tr>
-                    <th className="py-1 font-semibold">Bulan</th>
-                    <th className="py-1 text-right font-semibold">Transaksi berbayar</th>
-                    <th className="py-1 text-right font-semibold">Neto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...monthly].reverse().map((m) => (
-                    <tr key={m.key} className="border-t border-line/60">
-                      <td className="py-1 text-navy">{monthLabel(m.key, true)}</td>
-                      <td className="py-1 text-right tabular-nums">{m.detail.split("· ")[1]?.split(" ")[0]}</td>
-                      <td className="py-1 text-right font-semibold text-navy tabular-nums">{rupiah(m.value)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
           </section>
 
           <div className="grid items-start gap-6 lg:grid-cols-2">
@@ -345,7 +314,7 @@ export default function SalesDashboard() {
           </div>
 
           <p className="text-xs leading-relaxed text-muted">
-            Sumber: API Mayar (hanya baca), disinkron otomatis saat halaman dibuka bila data lebih dari 15 menit. Neto = kotor − fee Mayar &amp; Xendit. Angka
+            Sumber: API Mayar (hanya baca), data sejak tanggal 1 bulan lalu, disinkron otomatis saat halaman dibuka bila data lebih dari 15 menit. Neto = kotor − fee Mayar &amp; Xendit. Angka
             bersifat estimasi: refund belum terdeteksi lewat API Mayar, dan biaya iklan/trainer tidak dikurangkan. Email &amp; nomor HP pembeli tidak disimpan.
           </p>
         </>
