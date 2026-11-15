@@ -5,7 +5,7 @@
 export type ModuleStatus = "active" | "coming-soon";
 
 export interface WorkspaceModule {
-  id: "ai-image" | "email" | "email-db" | "content" | "campaign" | "assets";
+  id: "ai-image" | "email" | "email-db" | "sales" | "content" | "campaign" | "assets";
   label: string;
   href: string;
   status: ModuleStatus;
@@ -33,6 +33,13 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
     href: "/dashboard/email/database",
     status: "active",
     description: "Kontak email dengan kategori & tag, import CSV.",
+  },
+  {
+    id: "sales",
+    label: "PENJUALAN",
+    href: "/dashboard/penjualan",
+    status: "active",
+    description: "Pergerakan penjualan Mayar: dana masuk kotor, fee, dan neto.",
   },
   {
     id: "content",

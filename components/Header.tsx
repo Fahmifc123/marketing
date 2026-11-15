@@ -33,8 +33,8 @@ export default function Header({ activeModule }: HeaderProps) {
         </Link>
 
         <div className="ml-auto flex items-center gap-2 lg:order-3">
-          <span className="hidden text-sm font-medium text-muted sm:inline">Marketing Kit</span>
-          <span aria-hidden="true" className="hidden h-5 w-px bg-line sm:inline-block" />
+          <span className="hidden text-sm font-medium whitespace-nowrap text-muted 2xl:inline">Marketing Kit</span>
+          <span aria-hidden="true" className="hidden h-5 w-px bg-line 2xl:inline-block" />
           <button type="button" onClick={logout} disabled={loggingOut} className="btn-ghost text-sm">
             {loggingOut ? "Logging out…" : "Logout"}
           </button>
@@ -46,7 +46,7 @@ export default function Header({ activeModule }: HeaderProps) {
               const active = m.id === activeModule;
               if (m.status !== "active") {
                 return (
-                  <li key={m.id}>
+                  <li key={m.id} className="hidden 2xl:block">
                     <span
                       aria-disabled="true"
                       title={`${m.label} — Coming Soon`}
