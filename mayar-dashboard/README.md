@@ -1,6 +1,6 @@
 # Dashboard Penjualan Mayar — Intelligo ID
 
-Menu **PENJUALAN** di Marketing Kit (`marketing.intelligo.id/dashboard/penjualan`) menampilkan pergerakan dana masuk dari Mayar untuk tim marketing (termasuk part time): kotor, fee Mayar + Xendit, dan neto per hari, bulan, dan produk.
+Menu **DASHBOARD MAYAR (PENJUALAN)** di Marketing Kit (`marketing.intelligo.id/dashboard/penjualan`) menampilkan pergerakan dana masuk dari Mayar untuk tim marketing (termasuk part time): kotor, fee Mayar + Xendit, dan neto per hari, bulan, dan produk.
 
 Dashboard **hanya membaca** dari Mayar. Tidak ada aksi yang mengubah data di akun Mayar.
 
@@ -34,7 +34,7 @@ Data penjualan disimpan di storage privat Vercel Blob **marketing-data** (variab
 
 ## Sinkron transaksi
 
-- **Otomatis:** saat halaman PENJUALAN dibuka dan data terakhir lebih dari 15 menit, aplikasi mengambil transaksi baru dari Mayar.
+- **Otomatis:** saat halaman DASHBOARD MAYAR dibuka dan data terakhir lebih dari 15 menit, aplikasi mengambil transaksi baru dari Mayar.
 - **Manual:** klik **Sinkron sekarang** di kanan atas dashboard.
 - **Rentang data:** hanya transaksi sejak **tanggal 1 bulan lalu** (WIB), cukup untuk bulan berjalan dan perbandingan dengan bulan lalu. Data yang lebih lama otomatis dibuang dari penyimpanan.
 - **Idempoten:** transaksi disimpan berdasarkan ID Mayar, jadi transaksi yang sama tidak pernah masuk dua kali.

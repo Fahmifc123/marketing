@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import { hasValidSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "PENJUALAN",
+  title: "DASHBOARD MAYAR (PENJUALAN)",
 };
 
 export default async function SalesPage() {
@@ -18,7 +18,7 @@ export default async function SalesPage() {
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 pt-10 pb-16 sm:px-6 lg:pt-14">
         <div className="mb-10">
           <h1 className="text-4xl font-bold tracking-tight text-navy sm:text-5xl">
-            PENJUALAN<span className="text-orange">.</span>
+            DASHBOARD MAYAR (PENJUALAN)<span className="text-orange">.</span>
           </h1>
           <p className="mt-3 text-xl font-medium text-navy sm:text-2xl">Pergerakan dana masuk dari Mayar.</p>
           <p className="mt-2 text-sm text-muted sm:text-base">

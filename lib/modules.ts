@@ -36,7 +36,7 @@ export const WORKSPACE_MODULES: WorkspaceModule[] = [
   },
   {
     id: "sales",
-    label: "PENJUALAN",
+    label: "DASHBOARD MAYAR (PENJUALAN)",
     href: "/dashboard/penjualan",
     status: "active",
     description: "Pergerakan penjualan Mayar: dana masuk kotor, fee, dan neto.",
